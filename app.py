@@ -382,6 +382,7 @@ elif page == "🛠️ Admin" and is_admin:
             if changes_made > 0:
                 get_matches.clear()
                 get_leaderboard.clear()
+                get_user_bets.clear()
                 st.success(f"✅ Updated {changes_made} match result(s)!")
                 st.rerun()
             else:
