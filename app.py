@@ -361,14 +361,22 @@ elif page == "🛠️ Admin" and is_admin:
                 original_result = df.loc[idx, "Result"]
                 new_result = row["Result"]
                 
-                # Only update if result changed and is valid
-                if new_result != original_result and new_result in ["1", "X", "2", ""]:
+                # Handle empty/NaN values
+                if pd.isna(new_result) or new_result == "":
+                    new_result = ""
+                if pd.isna(original_result) or original_result == "":
+                    original_result = ""
+                
+                # Only update if result changed
+                if new_result != original_result:
                     match_id = row["Match ID"]
-                    # If empty string, clear the result
+                    # If empty string, clear the result (set to None)
                     if new_result == "":
                         set_result(match_id, None)
-                    else:
+                    elif new_result in ["1", "X", "2"]:
                         set_result(match_id, new_result)
+                    else:
+                        continue  # Skip invalid values
                     changes_made += 1
             
             if changes_made > 0:
