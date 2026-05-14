@@ -185,6 +185,27 @@ if page == "⚽ Place Bets":
         format_func=lambda x: f"Group {x}",
         key="selected_football_group",
     )
+    
+    # Calculate LIVE preview of coins being used (from session state)
+    live_coins_preview = 0
+    for match in matches:
+        mid = match["match_id"]
+        # Check if there's an amount in session state (user is editing)
+        if f"amount_{mid}" in st.session_state:
+            live_coins_preview += st.session_state[f"amount_{mid}"]
+        # Otherwise use saved amount
+        elif mid in user_bets:
+            live_coins_preview += user_bets[mid].get("bet_amount", 1)
+    
+    # Always show live preview
+    preview_remaining = 10 - live_coins_preview
+    if live_coins_preview > 10:
+        st.warning(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({live_coins_preview - 10} over budget)")
+    elif live_coins_preview < 10:
+        st.info(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({preview_remaining} remaining)")
+    else:
+        st.success(f"💡 **Live Preview**: Perfect! **{live_coins_preview} coins** ✓")
+    
     open_matches = []
 
     for match in match_groups[football_group]:
