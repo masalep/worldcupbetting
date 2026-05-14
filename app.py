@@ -12,6 +12,16 @@ st.set_page_config(page_title="⚽ WC 2026 Betting", page_icon="⚽", layout="wi
 
 # ── LOGIN ──────────────────────────────────────────────────────────────────────
 
+# Check if user is already logged in via session storage
+if "username" not in st.session_state:
+    # Try to restore from browser's sessionStorage via query params
+    if hasattr(st, 'query_params'):
+        query_user = st.query_params.get("u")
+        query_group = st.query_params.get("g")
+        if query_user:
+            st.session_state["username"] = query_user
+            st.session_state["group_name"] = query_group or ""
+
 if "username" not in st.session_state:
     st.title("⚽ World Cup 2026 Betting Pool")
     st.divider()
@@ -31,6 +41,9 @@ if "username" not in st.session_state:
                         and admin_pass == st.secrets.get("ADMIN_PASSWORD", "")):
                     st.session_state["username"]   = admin_name
                     st.session_state["group_name"] = ""
+                    # Set query params for persistence
+                    st.query_params["u"] = admin_name
+                    st.query_params["g"] = ""
                     st.rerun()
                 else:
                     st.error("Wrong admin credentials!")
@@ -57,6 +70,9 @@ if "username" not in st.session_state:
                     else:
                         st.session_state["username"]   = username.strip()
                         st.session_state["group_name"] = group
+                        # Set query params for persistence
+                        st.query_params["u"] = username.strip()
+                        st.query_params["g"] = group
                         st.rerun()
 
             else:  # New player
@@ -77,6 +93,9 @@ if "username" not in st.session_state:
                                 get_group_members.clear()
                                 st.session_state["username"]   = username.strip()
                                 st.session_state["group_name"] = group
+                                # Set query params for persistence
+                                st.query_params["u"] = username.strip()
+                                st.query_params["g"] = group
                                 st.rerun()
                             except Exception:
                                 st.error(f"**{username.strip()}** was just taken by someone else — try a different name.")
@@ -104,6 +123,9 @@ with st.sidebar:
 
     if st.button("Logout", use_container_width=True):
         del st.session_state["username"]
+        del st.session_state["group_name"]
+        # Clear query params
+        st.query_params.clear()
         st.rerun()
 
 
