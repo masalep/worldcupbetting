@@ -6,6 +6,7 @@ from database import (
     get_groups, create_group, verify_group, join_group, verify_member,
     get_group_members, remove_group_member,
     validate_and_set_slip_status, get_member_slip_status,
+    get_all_teams, get_user_knockout_picks, save_knockout_picks, validate_and_set_knockout_status,
 )
 
 st.set_page_config(page_title="⚽ WC 2026 Betting", page_icon="⚽", layout="wide")
@@ -115,9 +116,9 @@ with st.sidebar:
     st.caption(f"Group: {group_name}")
     st.divider()
 
-    pages = ["⚽ Place Bets", "🏆 Leaderboard"]
+    pages = ["Place Bets", "Knockout Picks", "Leaderboard"]
     if is_admin:
-        pages.append("🛠️ Admin")
+        pages.append("Admin")
 
     page = st.radio("", pages, label_visibility="collapsed")
     st.divider()
@@ -132,11 +133,11 @@ with st.sidebar:
 
 # ── PAGE: PLACE BETS ───────────────────────────────────────────────────────────
 
-if page == "⚽ Place Bets" and is_admin:
+if page == "Place Bets" and is_admin:
     st.info("Admins cannot place bets.")
     st.stop()
 
-if page == "⚽ Place Bets":
+if page == "Place Bets":
     st.title("⚽ Place Your Bets")
     
     matches = get_matches()
@@ -316,13 +317,29 @@ if page == "⚽ Place Bets":
                 st.rerun()
 
 
+# ── PAGE: KNOCKOUT PICKS ──────────────────────────────────────────────────────
+
+elif page == "Knockout Picks":
+    st.title("Knockout Picks")
+    
+    teams_by_group = get_all_teams()
+    
+    if not teams_by_group:
+        st.error("No teams found in database")
+        st.stop()
+        
+    st.write("Teams:")
+    for group, teams in teams_by_group.items():
+        st.write(f"**{group}:** {', '.join(teams)}")
+
+
 # ── PAGE: LEADERBOARD ─────────────────────────────────────────────────────────
 
-elif page == "🏆 Leaderboard" and is_admin:
+elif page == "Leaderboard" and is_admin:
     st.info("Admins cannot view leaderboards. Log in as a regular user to see group standings.")
     st.stop()
 
-elif page == "🏆 Leaderboard":
+elif page == "Leaderboard":
     st.title(f"🏆 Leaderboard — {group_name}")
     st.caption("💡 Only players with valid betting slips (all matches bet with exact coin budget) appear on the leaderboard.")
 
@@ -350,7 +367,7 @@ elif page == "🏆 Leaderboard":
 
 # ── PAGE: ADMIN ────────────────────────────────────────────────────────────────
 
-elif page == "🛠️ Admin" and is_admin:
+elif page == "Admin" and is_admin:
     st.title("🛠️ Admin Panel")
 
     tab_groups, tab_odds, tab_results = st.tabs(["👥 Groups", "📊 Odds", "⚽ Results"])

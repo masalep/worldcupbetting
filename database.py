@@ -224,3 +224,71 @@ def get_member_slip_status(group_name: str) -> list:
     members = sb.table("group_members").select("username, has_valid_slip")\
                 .eq("group_name", group_name).execute().data
     return members
+
+
+# ── Knockout Picks ─────────────────────────────────────────────────────────────
+
+def get_all_teams() -> dict:
+    """Return all teams organized by group. Returns {group: [team1, team2, ...]}"""
+    sb = get_supabase()
+    teams = sb.table("teams").select("*").order("group_name").order("team_name").execute().data
+    
+    teams_by_group = {}
+    for team in teams:
+        group = team["group_name"]
+        if group not in teams_by_group:
+            teams_by_group[group] = []
+        teams_by_group[group].append(team["team_name"])
+    
+    return teams_by_group
+
+
+@st.cache_data(ttl=10)
+def get_user_knockout_picks(username: str, group_name: str) -> list:
+    """Return list of teams user has picked to advance to knockouts."""
+    sb = get_supabase()
+    picks = sb.table("knockout_picks").select("team")\
+              .eq("username", username).eq("group_name", group_name).execute().data
+    return [p["team"] for p in picks]
+
+
+def save_knockout_picks(username: str, group_name: str, teams: list):
+    """Save user's knockout picks (replaces all existing picks)."""
+    sb = get_supabase()
+    
+    # Delete existing picks
+    sb.table("knockout_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new picks
+    if teams:
+        picks_data = [{"username": username, "group_name": group_name, "team": team} for team in teams]
+        sb.table("knockout_picks").insert(picks_data).execute()
+    
+    get_user_knockout_picks.clear()
+
+
+def validate_and_set_knockout_status(username: str, group_name: str) -> dict:
+    """
+    Check if user has valid knockout picks (exactly 32 teams).
+    Updates has_valid_knockout_picks in group_members.
+    """
+    sb = get_supabase()
+    
+    picks = get_user_knockout_picks(username, group_name)
+    total_picks = len(picks)
+    is_valid = (total_picks == 32)
+    
+    # Update has_valid_knockout_picks in group_members
+    sb.table("group_members").update({
+        "has_valid_knockout_picks": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "total_picks": total_picks,
+        "required_picks": 32,
+    }
