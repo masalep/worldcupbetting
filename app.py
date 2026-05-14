@@ -5,6 +5,7 @@ from database import (
     save_bet, get_leaderboard, set_result, lock_all_odds, unlock_all_odds,
     get_groups, create_group, verify_group, join_group, verify_member,
     get_group_members, remove_group_member,
+    validate_and_set_slip_status, get_member_slip_status,
 )
 
 st.set_page_config(page_title="⚽ WC 2026 Betting", page_icon="⚽", layout="wide")
@@ -137,14 +138,42 @@ if page == "⚽ Place Bets" and is_admin:
 
 if page == "⚽ Place Bets":
     st.title("⚽ Place Your Bets")
-    st.caption("Pick 1 (home win), X (draw) or 2 (away win) for each match. Click **Save bets** when done.")
-
+    
     matches = get_matches()
     if not matches:
         st.info("No matches loaded yet — ask the admin to initialise matches.")
         st.stop()
 
+    # Clear cache to get fresh bet data
+    get_user_bets.clear()
     user_bets = get_user_bets(username, group_name)
+    
+    # Calculate budget statistics
+    total_matches = len(matches)
+    total_bets_placed = len(user_bets)
+    total_coins_used = sum(bet.get("bet_amount", 1) for bet in user_bets.values())
+    remaining_coins = 10 - total_coins_used
+    
+    # Show budget tracker at top
+    st.markdown("### 💰 Budget Tracker")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Coins Used", f"{total_coins_used}/10", 
+                  delta=f"{remaining_coins} remaining" if remaining_coins > 0 else "Complete!")
+    with col2:
+        st.metric("Matches Bet", f"{total_bets_placed}/{total_matches}")
+    with col3:
+        if total_bets_placed == total_matches and total_coins_used == 10:
+            st.success("✅ Valid Slip!")
+        else:
+            st.warning("⏳ Incomplete")
+    
+    # Show warning if over budget
+    if total_coins_used > 10:
+        st.error(f"🚨 **BUDGET EXCEEDED!** You've used {total_coins_used} coins but only have 10. You must reduce your bets to create a valid slip.")
+    
+    st.divider()
+    st.caption("Pick 1 (home win), X (draw) or 2 (away win) for each match. Set bet amount (1-10 coins). **Save all bets** when done.")
 
     match_groups: dict[str, list] = {}
     for m in matches:
@@ -201,16 +230,28 @@ if page == "⚽ Place Bets":
                 options = ["1", "X", "2"]
                 labels  = [f"1 — {home} win", "X — Draw", f"2 — {away} win"]
                 current_index = options.index(current_bet) if current_bet in options else None
+                current_bet_amount = bet_row.get("bet_amount", 1)
 
-                st.radio(
-                    label=mid,
-                    options=options,
-                    format_func=lambda x, l=labels, o=options: l[o.index(x)],
-                    index=current_index,
-                    horizontal=True,
-                    label_visibility="collapsed",
-                    key=f"bet_{mid}",
-                )
+                bet_col, amount_col = st.columns([3, 1])
+                with bet_col:
+                    st.radio(
+                        label=mid,
+                        options=options,
+                        format_func=lambda x, l=labels, o=options: l[o.index(x)],
+                        index=current_index,
+                        horizontal=True,
+                        label_visibility="collapsed",
+                        key=f"bet_{mid}",
+                    )
+                with amount_col:
+                    st.number_input(
+                        "Coins",
+                        min_value=1,
+                        max_value=10,
+                        value=current_bet_amount,
+                        key=f"amount_{mid}",
+                        help="Bet 1-10 coins on this match"
+                    )
                 open_matches.append(mid)
 
     if open_matches:
@@ -223,14 +264,35 @@ if page == "⚽ Place Bets":
             st.error("🔒 **Betting is locked!** The tournament has started and you can no longer place or change bets.")
         else:
             if st.button(f"💾 Save bets for Group {football_group}", type="primary", key=f"save_{football_group}"):
+                # Just save all bets - validation happens after
                 saved = 0
                 for mid in open_matches:
                     choice = st.session_state.get(f"bet_{mid}")
+                    bet_amount = st.session_state.get(f"amount_{mid}", 1)
                     if choice:
-                        save_bet(username, group_name, mid, choice)
+                        save_bet(username, group_name, mid, choice, bet_amount)
                         saved += 1
+                
+                # Validate and update slip status
+                status = validate_and_set_slip_status(username, group_name)
+                
                 get_user_bets.clear()
                 st.toast(f"✅ Saved {saved} bets for Group {football_group}!", icon="✅")
+                
+                # Show validation status
+                if status["is_valid"]:
+                    st.success(f"✅ **Valid slip!** You've bet {status['total_coins']} coins on all {status['total_bets']} matches!")
+                else:
+                    issues = []
+                    if status['total_bets'] < status['required_bets']:
+                        issues.append(f"only {status['total_bets']}/{status['required_bets']} matches bet")
+                    if status['total_coins'] != 10:
+                        issues.append(f"only {status['total_coins']}/10 coins used")
+                    elif status['total_coins'] > 10:
+                        issues.append(f"{status['total_coins']}/10 coins used (over budget!)")
+                    st.warning(f"⏳ Incomplete slip: {' · '.join(issues)}")
+                
+                st.rerun()
 
 
 # ── PAGE: LEADERBOARD ─────────────────────────────────────────────────────────
@@ -241,10 +303,11 @@ elif page == "🏆 Leaderboard" and is_admin:
 
 elif page == "🏆 Leaderboard":
     st.title(f"🏆 Leaderboard — {group_name}")
+    st.caption("💡 Only players with valid betting slips (all matches bet with exact coin budget) appear on the leaderboard.")
 
     board = get_leaderboard(group_name)
     if not board:
-        st.info("No bets placed yet!")
+        st.info("No players with valid betting slips yet! Complete your slip to compete.")
         st.stop()
 
     medals = ["🥇", "🥈", "🥉"]

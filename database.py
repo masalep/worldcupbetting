@@ -124,7 +124,7 @@ def get_user_bets(username: str, group_name: str) -> dict:
     return {row["match_id"]: row for row in rows}
 
 
-def save_bet(username: str, group_name: str, match_id: str, prediction: str):
+def save_bet(username: str, group_name: str, match_id: str, prediction: str, bet_amount: int = 1):
     """Upsert a bet (one bet per user per group per match)."""
     sb = get_supabase()
     sb.table("bets").upsert({
@@ -132,6 +132,7 @@ def save_bet(username: str, group_name: str, match_id: str, prediction: str):
         "group_name": group_name,
         "match_id":   match_id,
         "prediction": prediction,
+        "bet_amount": bet_amount,
     }, on_conflict="username,group_name,match_id").execute()
     get_user_bets.clear()
 
@@ -140,10 +141,14 @@ def save_bet(username: str, group_name: str, match_id: str, prediction: str):
 
 @st.cache_data(ttl=30)
 def get_leaderboard(group_name: str) -> list:
-    """Return leaderboard for a specific group, sorted by points."""
+    """Return leaderboard for a specific group, sorted by points. Only includes users with valid slips."""
     sb = get_supabase()
 
-    members   = sb.table("group_members").select("username").eq("group_name", group_name).execute().data
+    # Only get members with valid slips
+    members   = sb.table("group_members").select("username") \
+                  .eq("group_name", group_name) \
+                  .eq("has_valid_slip", True) \
+                  .execute().data
     usernames = [m["username"] for m in members]
 
     if not usernames:
@@ -166,9 +171,56 @@ def get_leaderboard(group_name: str) -> list:
             if bet["points_earned"] > 0:
                 players[u]["correct_bets"] += 1
 
-    # Include members who haven't bet yet
+    # Include valid members who haven't earned points yet
     for u in usernames:
         if u not in players:
             players[u] = {"username": u, "total_points": 0.0, "correct_bets": 0, "total_bets": 0}
 
     return sorted(players.values(), key=lambda x: x["total_points"], reverse=True)
+
+
+# ── Budget System ──────────────────────────────────────────────────────────────
+
+def validate_and_set_slip_status(username: str, group_name: str) -> dict:
+    """
+    Check if user has a valid betting slip:
+    - Bet on all matches (6 matches for testing)
+    - Total bet amount = 10 coins
+    - Each bet between 1-10 coins
+    Returns status dict with is_valid, messages, and stats.
+    """
+    sb = get_supabase()
+    
+    # Get all matches
+    total_matches = len(sb.table("matches").select("match_id").execute().data)
+    
+    # Get user's bets
+    bets = sb.table("bets").select("*").eq("username", username).eq("group_name", group_name).execute().data
+    
+    # Calculate stats
+    total_bets = len(bets)
+    total_coins = sum(bet.get("bet_amount", 1) for bet in bets)
+    
+    # Validation (6 matches, 10 coins total for testing)
+    is_valid = (total_bets == total_matches and total_coins == 10)
+    
+    # Update has_valid_slip in group_members
+    sb.table("group_members").update({
+        "has_valid_slip": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "total_bets": total_bets,
+        "required_bets": total_matches,
+        "total_coins": total_coins,
+        "required_coins": 10,
+    }
+
+
+def get_member_slip_status(group_name: str) -> list:
+    """Get all members and their slip status for a group."""
+    sb = get_supabase()
+    members = sb.table("group_members").select("username, has_valid_slip")\
+                .eq("group_name", group_name).execute().data
+    return members
