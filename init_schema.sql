@@ -1,6 +1,14 @@
 -- init_schema.sql
 -- Creates a clean schema for 1X2 betting platform
 
+DROP TABLE IF EXISTS knockout_results;
+DROP TABLE IF EXISTS tournament_winner_picks;
+DROP TABLE IF EXISTS golden_boot_picks;
+DROP TABLE IF EXISTS goal_scorers;
+DROP TABLE IF EXISTS final_picks;
+DROP TABLE IF EXISTS semi_picks;
+DROP TABLE IF EXISTS quarter_picks;
+DROP TABLE IF EXISTS round16_picks;
 DROP TABLE IF EXISTS knockout_picks;
 DROP TABLE IF EXISTS bets;
 DROP TABLE IF EXISTS matches;
@@ -19,6 +27,12 @@ CREATE TABLE group_members (
     password TEXT NOT NULL,
     has_valid_slip BOOLEAN DEFAULT FALSE,
     has_valid_knockout_picks BOOLEAN DEFAULT FALSE,
+    has_valid_round16_picks BOOLEAN DEFAULT FALSE,
+    has_valid_quarter_picks BOOLEAN DEFAULT FALSE,
+    has_valid_semi_picks BOOLEAN DEFAULT FALSE,
+    has_valid_final_picks BOOLEAN DEFAULT FALSE,
+    has_valid_winner_pick BOOLEAN DEFAULT FALSE,
+    has_valid_golden_boot_pick BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (group_name, username)
 );
 
@@ -58,3 +72,76 @@ CREATE TABLE knockout_picks (
     team TEXT NOT NULL,
     PRIMARY KEY (username, group_name, team)
 );
+
+CREATE TABLE round16_picks (
+    username TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    PRIMARY KEY (username, group_name, team)
+);
+
+CREATE TABLE quarter_picks (
+    username TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    PRIMARY KEY (username, group_name, team)
+);
+
+CREATE TABLE semi_picks (
+    username TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    PRIMARY KEY (username, group_name, team)
+);
+
+CREATE TABLE final_picks (
+    username TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    is_winner BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (username, group_name, team)
+);
+
+CREATE TABLE tournament_winner_picks (
+    username TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (username, group_name)
+);
+
+CREATE TABLE golden_boot_picks (
+    username TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (username, group_name)
+);
+
+CREATE TABLE goal_scorers (
+    player_name TEXT PRIMARY KEY,
+    team TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE knockout_results (
+    id SERIAL PRIMARY KEY,
+    stage TEXT NOT NULL,
+    team TEXT,
+    player_name TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(stage, team, player_name)
+);
+
+-- Indexes
+CREATE INDEX idx_bets_username ON bets(username);
+CREATE INDEX idx_bets_match ON bets(match_id);
+CREATE INDEX idx_knockout_picks_user ON knockout_picks(username, group_name);
+CREATE INDEX idx_round16_picks_user ON round16_picks(username, group_name);
+CREATE INDEX idx_quarter_picks_user ON quarter_picks(username, group_name);
+CREATE INDEX idx_semi_picks_user ON semi_picks(username, group_name);
+CREATE INDEX idx_final_picks_user ON final_picks(username, group_name);
+CREATE INDEX idx_tournament_winner_picks_user ON tournament_winner_picks(username, group_name);
+CREATE INDEX idx_golden_boot_picks_user ON golden_boot_picks(username, group_name);
+CREATE INDEX idx_goal_scorers_team ON goal_scorers(team);
+CREATE INDEX idx_knockout_results_stage ON knockout_results(stage);

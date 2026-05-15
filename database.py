@@ -139,15 +139,22 @@ def save_bet(username: str, group_name: str, match_id: str, prediction: str, bet
 
 # ── Leaderboard ────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=10)
 def get_leaderboard(group_name: str) -> list:
-    """Return leaderboard for a specific group, sorted by points. Only includes users with valid slips."""
+    """Return leaderboard for a specific group, sorted by points. Only includes users with ALL picks complete."""
     sb = get_supabase()
 
-    # Only get members with valid slips
+    # Only get members with ALL validations complete
     members   = sb.table("group_members").select("username") \
                   .eq("group_name", group_name) \
                   .eq("has_valid_slip", True) \
+                  .eq("has_valid_knockout_picks", True) \
+                  .eq("has_valid_round16_picks", True) \
+                  .eq("has_valid_quarter_picks", True) \
+                  .eq("has_valid_semi_picks", True) \
+                  .eq("has_valid_final_picks", True) \
+                  .eq("has_valid_winner_pick", True) \
+                  .eq("has_valid_golden_boot_pick", True) \
                   .execute().data
     usernames = [m["username"] for m in members]
 
@@ -175,6 +182,12 @@ def get_leaderboard(group_name: str) -> list:
     for u in usernames:
         if u not in players:
             players[u] = {"username": u, "total_points": 0.0, "correct_bets": 0, "total_bets": 0}
+    
+    # Add knockout points to each player's total
+    for u in usernames:
+        knockout_points = calculate_knockout_points(u, group_name)
+        players[u]["total_points"] += knockout_points["total_points"]
+        players[u]["knockout_points"] = knockout_points["total_points"]  # Store separately for display
 
     return sorted(players.values(), key=lambda x: x["total_points"], reverse=True)
 
@@ -221,7 +234,7 @@ def validate_and_set_slip_status(username: str, group_name: str) -> dict:
 def get_member_slip_status(group_name: str) -> list:
     """Get all members and their slip status for a group."""
     sb = get_supabase()
-    members = sb.table("group_members").select("username, has_valid_slip")\
+    members = sb.table("group_members").select("username, has_valid_slip, has_valid_knockout_picks")\
                 .eq("group_name", group_name).execute().data
     return members
 
@@ -253,7 +266,7 @@ def get_user_knockout_picks(username: str, group_name: str) -> list:
 
 
 def save_knockout_picks(username: str, group_name: str, teams: list):
-    """Save user's knockout picks (replaces all existing picks)."""
+    """Save user's knockout picks (replaces all existing picks). Automatically validates."""
     sb = get_supabase()
     
     # Delete existing picks
@@ -269,6 +282,9 @@ def save_knockout_picks(username: str, group_name: str, teams: list):
         sb.table("knockout_picks").insert(picks_data).execute()
     
     get_user_knockout_picks.clear()
+    
+    # Auto-validate after saving
+    validate_and_set_knockout_status(username, group_name)
 
 
 def validate_and_set_knockout_status(username: str, group_name: str) -> dict:
@@ -291,4 +307,467 @@ def validate_and_set_knockout_status(username: str, group_name: str) -> dict:
         "is_valid": is_valid,
         "total_picks": total_picks,
         "required_picks": 32,
+    }
+
+
+# ── Round of 16 Picks ──────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def get_user_round16_picks(username: str, group_name: str) -> list:
+    """Get user's Round of 16 picks."""
+    sb = get_supabase()
+    picks = sb.table("round16_picks").select("team")\
+             .eq("username", username)\
+             .eq("group_name", group_name)\
+             .execute().data
+    return [p["team"] for p in picks]
+
+
+def save_round16_picks(username: str, group_name: str, teams: list):
+    """Save user's Round of 16 picks (replaces all existing picks). Automatically validates."""
+    sb = get_supabase()
+    
+    # Delete existing picks
+    sb.table("round16_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new picks
+    if teams:
+        picks_data = [{"username": username, "group_name": group_name, "team": team} for team in teams]
+        sb.table("round16_picks").insert(picks_data).execute()
+    
+    # Clear cache before validation so it reads fresh data
+    get_user_round16_picks.clear()
+    
+    # Auto-validate after saving
+    validate_and_set_round16_status(username, group_name)
+
+
+def validate_and_set_round16_status(username: str, group_name: str) -> dict:
+    """Check if user has valid Round of 16 picks (exactly 16 teams)."""
+    sb = get_supabase()
+    
+    picks = get_user_round16_picks(username, group_name)
+    total_picks = len(picks)
+    is_valid = (total_picks == 16)
+    
+    # Update has_valid_round16_picks in group_members
+    sb.table("group_members").update({
+        "has_valid_round16_picks": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "total_picks": total_picks,
+        "required_picks": 16,
+    }
+
+
+# ── Quarter Finals Picks ───────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def get_user_quarter_picks(username: str, group_name: str) -> list:
+    """Get user's Quarter Finals picks."""
+    sb = get_supabase()
+    picks = sb.table("quarter_picks").select("team")\
+             .eq("username", username)\
+             .eq("group_name", group_name)\
+             .execute().data
+    return [p["team"] for p in picks]
+
+
+def save_quarter_picks(username: str, group_name: str, teams: list):
+    """Save user's Quarter Finals picks (replaces all existing picks). Automatically validates."""
+    sb = get_supabase()
+    
+    # Delete existing picks
+    sb.table("quarter_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new picks
+    if teams:
+        picks_data = [{"username": username, "group_name": group_name, "team": team} for team in teams]
+        sb.table("quarter_picks").insert(picks_data).execute()
+    
+    # Clear cache before validation so it reads fresh data
+    get_user_quarter_picks.clear()
+    
+    # Auto-validate after saving
+    validate_and_set_quarter_status(username, group_name)
+
+
+def validate_and_set_quarter_status(username: str, group_name: str) -> dict:
+    """Check if user has valid Quarter Finals picks (exactly 8 teams)."""
+    sb = get_supabase()
+    
+    picks = get_user_quarter_picks(username, group_name)
+    total_picks = len(picks)
+    is_valid = (total_picks == 8)
+    
+    # Update has_valid_quarter_picks in group_members
+    sb.table("group_members").update({
+        "has_valid_quarter_picks": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "total_picks": total_picks,
+        "required_picks": 8,
+    }
+
+
+# ── Semi Finals Picks ──────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def get_user_semi_picks(username: str, group_name: str) -> list:
+    """Get user's Semi Finals picks."""
+    sb = get_supabase()
+    picks = sb.table("semi_picks").select("team")\
+             .eq("username", username)\
+             .eq("group_name", group_name)\
+             .execute().data
+    return [p["team"] for p in picks]
+
+
+def save_semi_picks(username: str, group_name: str, teams: list):
+    """Save user's Semi Finals picks (replaces all existing picks). Automatically validates."""
+    sb = get_supabase()
+    
+    # Delete existing picks
+    sb.table("semi_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new picks
+    if teams:
+        picks_data = [{"username": username, "group_name": group_name, "team": team} for team in teams]
+        sb.table("semi_picks").insert(picks_data).execute()
+    
+    # Clear cache before validation so it reads fresh data
+    get_user_semi_picks.clear()
+    
+    # Auto-validate after saving
+    validate_and_set_semi_status(username, group_name)
+
+
+def validate_and_set_semi_status(username: str, group_name: str) -> dict:
+    """Check if user has valid Semi Finals picks (exactly 4 teams)."""
+    sb = get_supabase()
+    
+    picks = get_user_semi_picks(username, group_name)
+    total_picks = len(picks)
+    is_valid = (total_picks == 4)
+    
+    # Update has_valid_semi_picks in group_members
+    sb.table("group_members").update({
+        "has_valid_semi_picks": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "total_picks": total_picks,
+        "required_picks": 4,
+    }
+
+
+# ── Final Picks ────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def get_user_final_picks(username: str, group_name: str) -> dict:
+    """Get user's Final picks (2 teams + winner)."""
+    sb = get_supabase()
+    picks = sb.table("final_picks").select("team, is_winner")\
+             .eq("username", username)\
+             .eq("group_name", group_name)\
+             .execute().data
+    
+    finalists = [p["team"] for p in picks]
+    winner = next((p["team"] for p in picks if p["is_winner"]), None)
+    
+    return {
+        "finalists": finalists,
+        "winner": winner
+    }
+
+
+def save_final_picks(username: str, group_name: str, team1: str, team2: str, winner: str):
+    """Save user's Final picks (2 finalists + winner). Automatically validates."""
+    sb = get_supabase()
+    
+    # Delete existing picks
+    sb.table("final_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new picks
+    if team1 and team2:
+        picks_data = [
+            {"username": username, "group_name": group_name, "team": team1, "is_winner": (team1 == winner)},
+            {"username": username, "group_name": group_name, "team": team2, "is_winner": (team2 == winner)}
+        ]
+        sb.table("final_picks").insert(picks_data).execute()
+    
+    # Clear cache before validation so it reads fresh data
+    get_user_final_picks.clear()
+    
+    # Auto-validate after saving
+    validate_and_set_final_status(username, group_name)
+
+
+def validate_and_set_final_status(username: str, group_name: str) -> dict:
+    """Check if user has valid Final picks (2 teams)."""
+    sb = get_supabase()
+    
+    picks = get_user_final_picks(username, group_name)
+    total_finalists = len(picks["finalists"])
+    is_valid = (total_finalists == 2)
+    
+    # Update has_valid_final_picks in group_members
+    sb.table("group_members").update({
+        "has_valid_final_picks": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "total_finalists": total_finalists,
+    }
+
+
+# ── TOURNAMENT WINNER PICKS ────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def get_user_winner_pick(username: str, group_name: str) -> str:
+    """Get user's tournament winner pick."""
+    sb = get_supabase()
+    result = sb.table("tournament_winner_picks").select("team")\
+               .eq("username", username)\
+               .eq("group_name", group_name)\
+               .execute()
+    
+    return result.data[0]["team"] if result.data else None
+
+
+def save_winner_pick(username: str, group_name: str, team: str):
+    """Save user's tournament winner pick."""
+    sb = get_supabase()
+    
+    if not team:
+        return
+    
+    # Delete existing pick
+    sb.table("tournament_winner_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new pick
+    sb.table("tournament_winner_picks").insert({
+        "username": username,
+        "group_name": group_name,
+        "team": team
+    }).execute()
+    
+    # Validate
+    validate_and_set_winner_status(username, group_name)
+
+
+def validate_and_set_winner_status(username: str, group_name: str) -> dict:
+    """Check if user has valid winner pick."""
+    sb = get_supabase()
+    
+    pick = get_user_winner_pick(username, group_name)
+    is_valid = pick is not None
+    
+    # Update has_valid_winner_pick in group_members
+    sb.table("group_members").update({
+        "has_valid_winner_pick": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "team": pick
+    }
+
+
+# ── GOLDEN BOOT PICKS ──────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def get_all_goal_scorers() -> list:
+    """Get all goal scorers for dropdown."""
+    sb = get_supabase()
+    result = sb.table("goal_scorers").select("player_name, team")\
+               .order("player_name")\
+               .execute()
+    
+    return result.data
+
+
+@st.cache_data(ttl=10)
+def get_user_golden_boot_pick(username: str, group_name: str) -> str:
+    """Get user's golden boot pick."""
+    sb = get_supabase()
+    result = sb.table("golden_boot_picks").select("player_name")\
+               .eq("username", username)\
+               .eq("group_name", group_name)\
+               .execute()
+    
+    return result.data[0]["player_name"] if result.data else None
+
+
+def save_golden_boot_pick(username: str, group_name: str, player_name: str):
+    """Save user's golden boot pick."""
+    sb = get_supabase()
+    
+    if not player_name:
+        return
+    
+    # Delete existing pick
+    sb.table("golden_boot_picks")\
+      .delete()\
+      .eq("username", username)\
+      .eq("group_name", group_name)\
+      .execute()
+    
+    # Insert new pick
+    sb.table("golden_boot_picks").insert({
+        "username": username,
+        "group_name": group_name,
+        "player_name": player_name
+    }).execute()
+    
+    # Validate
+    validate_and_set_golden_boot_status(username, group_name)
+
+
+def validate_and_set_golden_boot_status(username: str, group_name: str) -> dict:
+    """Check if user has valid golden boot pick."""
+    sb = get_supabase()
+    
+    pick = get_user_golden_boot_pick(username, group_name)
+    is_valid = pick is not None
+    
+    # Update has_valid_golden_boot_pick in group_members
+    sb.table("group_members").update({
+        "has_valid_golden_boot_pick": is_valid
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    return {
+        "is_valid": is_valid,
+        "player": pick
+    }
+
+
+# ── Knockout Results (Admin) ───────────────────────────────────────────────────
+
+def save_knockout_result(stage: str, teams: list = None, player_name: str = None):
+    """Save actual knockout results set by admin. Stage: 'round32', 'round16', 'quarter', 'semi', 'final', 'winner', 'golden_boot'"""
+    sb = get_supabase()
+    
+    # Clear existing results for this stage
+    sb.table("knockout_results").delete().eq("stage", stage).execute()
+    
+    # Insert new results
+    if stage == "golden_boot" and player_name:
+        sb.table("knockout_results").insert({
+            "stage": stage,
+            "team": None,
+            "player_name": player_name
+        }).execute()
+    elif teams:
+        results_data = [{"stage": stage, "team": team, "player_name": None} for team in teams]
+        sb.table("knockout_results").insert(results_data).execute()
+
+
+@st.cache_data(ttl=60)
+def get_knockout_results(stage: str) -> list:
+    """Get actual knockout results for a stage."""
+    sb = get_supabase()
+    
+    if stage == "golden_boot":
+        result = sb.table("knockout_results").select("player_name")\
+                  .eq("stage", stage)\
+                  .execute().data
+        return result[0]["player_name"] if result else None
+    else:
+        results = sb.table("knockout_results").select("team")\
+                   .eq("stage", stage)\
+                   .execute().data
+        return [r["team"] for r in results]
+
+
+def calculate_knockout_points(username: str, group_name: str) -> dict:
+    """Calculate points for all knockout predictions based on actual results."""
+    points_breakdown = {
+        "round32": {"points": 0, "correct": 0, "total": 32, "points_per": 1},
+        "round16": {"points": 0, "correct": 0, "total": 16, "points_per": 2},
+        "quarter": {"points": 0, "correct": 0, "total": 8, "points_per": 4},
+        "semi": {"points": 0, "correct": 0, "total": 4, "points_per": 5},
+        "winner": {"points": 0, "correct": 0, "total": 1, "points_per": 10},
+        "golden_boot": {"points": 0, "correct": 0, "total": 1, "points_per": 5},
+    }
+    
+    # Round of 32
+    actual_round32 = get_knockout_results("round32")
+    if actual_round32:
+        user_round32 = get_user_knockout_picks(username, group_name)
+        correct = len(set(user_round32) & set(actual_round32))
+        points_breakdown["round32"]["correct"] = correct
+        points_breakdown["round32"]["points"] = correct * 1
+    
+    # Round of 16
+    actual_round16 = get_knockout_results("round16")
+    if actual_round16:
+        user_round16 = get_user_round16_picks(username, group_name)
+        correct = len(set(user_round16) & set(actual_round16))
+        points_breakdown["round16"]["correct"] = correct
+        points_breakdown["round16"]["points"] = correct * 2
+    
+    # Quarter Finals
+    actual_quarter = get_knockout_results("quarter")
+    if actual_quarter:
+        user_quarter = get_user_quarter_picks(username, group_name)
+        correct = len(set(user_quarter) & set(actual_quarter))
+        points_breakdown["quarter"]["correct"] = correct
+        points_breakdown["quarter"]["points"] = correct * 4
+    
+    # Semi Finals
+    actual_semi = get_knockout_results("semi")
+    if actual_semi:
+        user_semi = get_user_semi_picks(username, group_name)
+        correct = len(set(user_semi) & set(actual_semi))
+        points_breakdown["semi"]["correct"] = correct
+        points_breakdown["semi"]["points"] = correct * 5
+    
+    # Tournament Winner
+    actual_winner = get_knockout_results("winner")
+    if actual_winner:
+        user_winner = get_user_winner_pick(username, group_name)
+        if user_winner in actual_winner:
+            points_breakdown["winner"]["correct"] = 1
+            points_breakdown["winner"]["points"] = 10
+    
+    # Golden Boot
+    actual_golden_boot = get_knockout_results("golden_boot")
+    if actual_golden_boot:
+        user_golden_boot = get_user_golden_boot_pick(username, group_name)
+        if user_golden_boot == actual_golden_boot:
+            points_breakdown["golden_boot"]["correct"] = 1
+            points_breakdown["golden_boot"]["points"] = 5
+    
+    total_points = sum(stage["points"] for stage in points_breakdown.values())
+    
+    return {
+        "total_points": total_points,
+        "breakdown": points_breakdown
     }

@@ -7,7 +7,15 @@ from database import (
     get_group_members, remove_group_member,
     validate_and_set_slip_status, get_member_slip_status,
     get_all_teams, get_user_knockout_picks, save_knockout_picks, validate_and_set_knockout_status,
+    get_user_round16_picks, save_round16_picks, validate_and_set_round16_status,
+    get_user_quarter_picks, save_quarter_picks, validate_and_set_quarter_status,
+    get_user_semi_picks, save_semi_picks, validate_and_set_semi_status,
+    get_user_final_picks, save_final_picks, validate_and_set_final_status,
+    get_user_winner_pick, save_winner_pick, validate_and_set_winner_status,
+    get_all_goal_scorers, get_user_golden_boot_pick, save_golden_boot_pick, validate_and_set_golden_boot_status,
+    save_knockout_result, get_knockout_results, calculate_knockout_points,
 )
+
 
 st.set_page_config(page_title="⚽ WC 2026 Betting", page_icon="⚽", layout="wide")
 
@@ -116,9 +124,17 @@ with st.sidebar:
     st.caption(f"Group: {group_name}")
     st.divider()
 
-    pages = ["Place Bets", "Knockout Picks", "Leaderboard"]
+    pages = ["Place Bets", "Leaderboard"]
     if is_admin:
         pages.append("Admin")
+    else:
+        # Only regular users can make knockout picks
+        pages.insert(1, "Round of 32")
+        pages.insert(2, "Round of 16")
+        pages.insert(3, "Quarter Finals")
+        pages.insert(4, "Semi Finals")
+        pages.insert(5, "Final")
+        pages.insert(6, "Winner & Golden Boot")
 
     page = st.radio("", pages, label_visibility="collapsed")
     st.divider()
@@ -317,20 +333,842 @@ if page == "Place Bets":
                 st.rerun()
 
 
-# ── PAGE: KNOCKOUT PICKS ──────────────────────────────────────────────────────
+# ── PAGE: ROUND OF 32 ────────────────────────────────────────────────────────
 
-elif page == "Knockout Picks":
-    st.title("Knockout Picks")
+elif page == "Round of 32":
+    st.title("Round of 32")
+    st.caption("Select exactly 32 teams that you think will advance to the Round of 32 (knockout stage)")
+    
+    # Custom CSS for green selected buttons
+    st.markdown("""
+        <style>
+        /* Make primary buttons green for this page */
+        div[data-testid="stVerticalBlock"] button[kind="primary"] {
+            background-color: #10b981 !important;
+            border-color: #10b981 !important;
+        }
+        div[data-testid="stVerticalBlock"] button[kind="primary"]:hover {
+            background-color: #059669 !important;
+            border-color: #059669 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
     teams_by_group = get_all_teams()
     
     if not teams_by_group:
         st.error("No teams found in database")
         st.stop()
+    
+    # Get user's current selections
+    user_picks = get_user_knockout_picks(username, group_name)
+    
+    # Initialize session state for selections if not exists
+    if "knockout_selections" not in st.session_state:
+        st.session_state["knockout_selections"] = set(user_picks)
+    
+    # Count current selections
+    selected_count = len(st.session_state["knockout_selections"])
+    
+    # Show counter at top
+    st.markdown("### Selection Status")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if selected_count == 32:
+            st.success(f"**{selected_count}/32 teams selected**")
+        elif selected_count < 32:
+            st.info(f"**{selected_count}/32 teams selected**")
+        else:
+            st.error(f"**{selected_count}/32 teams selected** (too many!)")
+    
+    with col2:
+        remaining = 32 - selected_count
+        if remaining > 0:
+            st.metric("Still need", remaining)
+        elif remaining == 0:
+            st.metric("Ready!", "✓")
+        else:
+            st.metric("Over by", abs(remaining))
+    
+    with col3:
+        # Show validity status
+        all_members = get_member_slip_status(group_name)
+        member_status = next((m for m in all_members if m["username"] == username), None)
         
-    st.write("Teams:")
-    for group, teams in teams_by_group.items():
-        st.write(f"**{group}:** {', '.join(teams)}")
+        # Check if user has any picks saved
+        current_saved_picks = get_user_knockout_picks(username, group_name)
+        
+        if member_status and member_status.get("has_valid_knockout_picks"):
+            st.success("✓ Valid & Saved")
+        elif current_saved_picks:
+            st.info(f"Draft: {len(current_saved_picks)} saved")
+        else:
+            st.warning("Not saved yet")
+    
+    st.divider()
+    
+    # Display teams by group with toggle buttons - 3 groups per row
+    all_groups = sorted(teams_by_group.keys())
+    
+    # Process groups in chunks of 3
+    for i in range(0, len(all_groups), 3):
+        group_chunk = all_groups[i:i+3]
+        cols = st.columns(len(group_chunk))
+        
+        for col_idx, group in enumerate(group_chunk):
+            with cols[col_idx]:
+                st.markdown(f"#### Group {group}")
+                teams = teams_by_group[group]
+                
+                # Display teams vertically in this column
+                for team in teams:
+                    is_selected = team in st.session_state["knockout_selections"]
+                    
+                    # Toggle button - green for selected, gray for unselected
+                    button_type = "primary" if is_selected else "secondary"
+                    
+                    if st.button(
+                        team,
+                        key=f"team_{group}_{team}",
+                        type=button_type,
+                        use_container_width=True
+                    ):
+                        # Toggle selection
+                        if is_selected:
+                            st.session_state["knockout_selections"].discard(team)
+                        else:
+                            st.session_state["knockout_selections"].add(team)
+                        st.rerun()
+        
+        st.divider()
+    
+    # Save button
+    st.markdown("### Save Your Picks")
+    
+    if selected_count < 32:
+        st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/32")
+    elif selected_count == 32:
+        st.success(f"✅ Perfect! You have selected exactly 32 teams. Save to complete your picks!")
+    else:
+        st.error(f"❌ Too many teams selected! You have {selected_count} but need exactly 32.")
+    
+    col_save, col_clear = st.columns([3, 1])
+    
+    with col_save:
+        if st.button("💾 Save Knockout Picks", type="primary", use_container_width=True):
+            # Save all selections (even if incomplete)
+            save_knockout_picks(username, group_name, list(st.session_state["knockout_selections"]))
+            
+            # Validate and update status (will only mark valid if exactly 32)
+            status = validate_and_set_knockout_status(username, group_name)
+            
+            if status["is_valid"]:
+                st.success(f"✅ Saved {status['total_picks']} teams! Your knockout picks are now VALID and locked in!")
+                st.rerun()
+            else:
+                st.warning(f"💾 Saved {status['total_picks']} teams as draft. Complete 32 teams to validate your picks.")
+                st.rerun()
+    
+    with col_clear:
+        if st.button("Clear All", use_container_width=True):
+            st.session_state["knockout_selections"] = set()
+            st.rerun()
+
+
+# ── PAGE: ROUND OF 16 ─────────────────────────────────────────────────────────
+
+elif page == "Round of 16":
+    st.title("Round of 16")
+    st.caption("Select exactly 16 teams that you think will advance to the Round of 16 (knockout stage)")
+    
+    # Custom CSS for green selected buttons
+    st.markdown("""
+        <style>
+        /* Make primary buttons green for this page */
+        div[data-testid="stVerticalBlock"] button[kind="primary"] {
+            background-color: #10b981 !important;
+            border-color: #10b981 !important;
+        }
+        div[data-testid="stVerticalBlock"] button[kind="primary"]:hover {
+            background-color: #059669 !important;
+            border-color: #059669 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    teams_by_group = get_all_teams()
+    
+    if not teams_by_group:
+        st.error("No teams found in database")
+        st.stop()
+    
+    # Get user's current selections
+    user_picks = get_user_round16_picks(username, group_name)
+    
+    # Initialize session state for selections if not exists
+    if "round16_selections" not in st.session_state:
+        st.session_state["round16_selections"] = set(user_picks)
+    
+    # Count current selections
+    selected_count = len(st.session_state["round16_selections"])
+    
+    # Show counter at top
+    st.markdown("### Selection Status")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if selected_count == 16:
+            st.success(f"**{selected_count}/16 teams selected**")
+        elif selected_count < 16:
+            st.info(f"**{selected_count}/16 teams selected**")
+        else:
+            st.error(f"**{selected_count}/16 teams selected** (too many!)")
+    
+    with col2:
+        remaining = 16 - selected_count
+        if remaining > 0:
+            st.metric("Still need", remaining)
+        elif remaining == 0:
+            st.metric("Ready!", "✓")
+        else:
+            st.metric("Over by", abs(remaining))
+    
+    with col3:
+        # Show validity status
+        all_members = get_member_slip_status(group_name)
+        member_status = next((m for m in all_members if m["username"] == username), None)
+        
+        # Check if user has any picks saved
+        current_saved_picks = get_user_round16_picks(username, group_name)
+        
+        if member_status and member_status.get("has_valid_round16_picks"):
+            st.success("✓ Valid & Saved")
+        elif current_saved_picks:
+            st.info(f"Draft: {len(current_saved_picks)} saved")
+        else:
+            st.warning("Not saved yet")
+    
+    st.divider()
+    
+    # Display teams by group with toggle buttons - 3 groups per row
+    all_groups = sorted(teams_by_group.keys())
+    
+    # Process groups in chunks of 3
+    for i in range(0, len(all_groups), 3):
+        group_chunk = all_groups[i:i+3]
+        cols = st.columns(len(group_chunk))
+        
+        for col_idx, group in enumerate(group_chunk):
+            with cols[col_idx]:
+                st.markdown(f"#### Group {group}")
+                teams = teams_by_group[group]
+                
+                # Display teams vertically in this column
+                for team in teams:
+                    is_selected = team in st.session_state["round16_selections"]
+                    
+                    # Toggle button - green for selected, gray for unselected
+                    button_type = "primary" if is_selected else "secondary"
+                    
+                    if st.button(
+                        team,
+                        key=f"r16_team_{group}_{team}",
+                        type=button_type,
+                        use_container_width=True
+                    ):
+                        # Toggle selection
+                        if is_selected:
+                            st.session_state["round16_selections"].discard(team)
+                        else:
+                            st.session_state["round16_selections"].add(team)
+                        st.rerun()
+        
+        st.divider()
+    
+    # Save button
+    st.markdown("### Save Your Picks")
+    
+    if selected_count < 16:
+        st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/16")
+    elif selected_count == 16:
+        st.success(f"✅ Perfect! You have selected exactly 16 teams. Save to complete your picks!")
+    else:
+        st.error(f"❌ Too many teams selected! You have {selected_count} but need exactly 16.")
+    
+    col_save, col_clear = st.columns([3, 1])
+    
+    with col_save:
+        if st.button("💾 Save Round of 16 Picks", type="primary", use_container_width=True):
+            # Save all selections (even if incomplete)
+            save_round16_picks(username, group_name, list(st.session_state["round16_selections"]))
+            
+            # Validate and update status (will only mark valid if exactly 16)
+            status = validate_and_set_round16_status(username, group_name)
+            
+            if status["is_valid"]:
+                st.success(f"✅ Saved {status['total_picks']} teams! Your Round of 16 picks are now VALID and locked in!")
+                st.rerun()
+            else:
+                st.warning(f"💾 Saved {status['total_picks']} teams as draft. Complete 16 teams to validate your picks.")
+                st.rerun()
+    
+    with col_clear:
+        if st.button("Clear All", use_container_width=True):
+            st.session_state["round16_selections"] = set()
+            st.rerun()
+
+
+# ── PAGE: QUARTER FINALS ──────────────────────────────────────────────────────
+
+elif page == "Quarter Finals":
+    st.title("Quarter Finals")
+    st.caption("Select exactly 8 teams that you think will advance to the Quarter Finals (knockout stage)")
+    
+    # Custom CSS for green selected buttons
+    st.markdown("""
+        <style>
+        /* Make primary buttons green for this page */
+        div[data-testid="stVerticalBlock"] button[kind="primary"] {
+            background-color: #10b981 !important;
+            border-color: #10b981 !important;
+        }
+        div[data-testid="stVerticalBlock"] button[kind="primary"]:hover {
+            background-color: #059669 !important;
+            border-color: #059669 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    teams_by_group = get_all_teams()
+    
+    if not teams_by_group:
+        st.error("No teams found in database")
+        st.stop()
+    
+    # Get user's current selections
+    user_picks = get_user_quarter_picks(username, group_name)
+    
+    # Initialize session state for selections if not exists
+    if "quarter_selections" not in st.session_state:
+        st.session_state["quarter_selections"] = set(user_picks)
+    
+    # Count current selections
+    selected_count = len(st.session_state["quarter_selections"])
+    
+    # Show counter at top
+    st.markdown("### Selection Status")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if selected_count == 8:
+            st.success(f"**{selected_count}/8 teams selected**")
+        elif selected_count < 8:
+            st.info(f"**{selected_count}/8 teams selected**")
+        else:
+            st.error(f"**{selected_count}/8 teams selected** (too many!)")
+    
+    with col2:
+        remaining = 8 - selected_count
+        if remaining > 0:
+            st.metric("Still need", remaining)
+        elif remaining == 0:
+            st.metric("Ready!", "✓")
+        else:
+            st.metric("Over by", abs(remaining))
+    
+    with col3:
+        # Show validity status
+        all_members = get_member_slip_status(group_name)
+        member_status = next((m for m in all_members if m["username"] == username), None)
+        
+        # Check if user has any picks saved
+        current_saved_picks = get_user_quarter_picks(username, group_name)
+        
+        if member_status and member_status.get("has_valid_quarter_picks"):
+            st.success("✓ Valid & Saved")
+        elif current_saved_picks:
+            st.info(f"Draft: {len(current_saved_picks)} saved")
+        else:
+            st.warning("Not saved yet")
+    
+    st.divider()
+    
+    # Display teams by group with toggle buttons - 3 groups per row
+    all_groups = sorted(teams_by_group.keys())
+    
+    # Process groups in chunks of 3
+    for i in range(0, len(all_groups), 3):
+        group_chunk = all_groups[i:i+3]
+        cols = st.columns(len(group_chunk))
+        
+        for col_idx, group in enumerate(group_chunk):
+            with cols[col_idx]:
+                st.markdown(f"#### Group {group}")
+                teams = teams_by_group[group]
+                
+                # Display teams vertically in this column
+                for team in teams:
+                    is_selected = team in st.session_state["quarter_selections"]
+                    
+                    # Toggle button - green for selected, gray for unselected
+                    button_type = "primary" if is_selected else "secondary"
+                    
+                    if st.button(
+                        team,
+                        key=f"qf_team_{group}_{team}",
+                        type=button_type,
+                        use_container_width=True
+                    ):
+                        # Toggle selection
+                        if is_selected:
+                            st.session_state["quarter_selections"].discard(team)
+                        else:
+                            st.session_state["quarter_selections"].add(team)
+                        st.rerun()
+        
+        st.divider()
+    
+    # Save button
+    st.markdown("### Save Your Picks")
+    
+    if selected_count < 8:
+        st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/8")
+    elif selected_count == 8:
+        st.success(f"✅ Perfect! You have selected exactly 8 teams. Save to complete your picks!")
+    else:
+        st.error(f"❌ Too many teams selected! You have {selected_count} but need exactly 8.")
+    
+    col_save, col_clear = st.columns([3, 1])
+    
+    with col_save:
+        if st.button("💾 Save Quarter Finals Picks", type="primary", use_container_width=True):
+            # Save all selections (even if incomplete)
+            save_quarter_picks(username, group_name, list(st.session_state["quarter_selections"]))
+            
+            # Validate and update status (will only mark valid if exactly 8)
+            status = validate_and_set_quarter_status(username, group_name)
+            
+            if status["is_valid"]:
+                st.success(f"✅ Saved {status['total_picks']} teams! Your Quarter Finals picks are now VALID and locked in!")
+                st.rerun()
+            else:
+                st.warning(f"💾 Saved {status['total_picks']} teams as draft. Complete 8 teams to validate your picks.")
+                st.rerun()
+    
+    with col_clear:
+        if st.button("Clear All", use_container_width=True):
+            st.session_state["quarter_selections"] = set()
+            st.rerun()
+
+
+# ── PAGE: SEMI FINALS ────────────────────────────────────────────────────────
+
+elif page == "Semi Finals":
+    st.title("Semi Finals")
+    st.caption("Select exactly 4 teams that you think will advance to the Semi Finals")
+    
+    # Custom CSS for green selected buttons
+    st.markdown("""
+        <style>
+        /* Make primary buttons green for this page */
+        div[data-testid="stVerticalBlock"] button[kind="primary"] {
+            background-color: #10b981 !important;
+            border-color: #10b981 !important;
+        }
+        div[data-testid="stVerticalBlock"] button[kind="primary"]:hover {
+            background-color: #059669 !important;
+            border-color: #059669 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    teams_by_group = get_all_teams()
+    
+    if not teams_by_group:
+        st.error("No teams found in database")
+        st.stop()
+    
+    # Get user's current selections
+    user_picks = get_user_semi_picks(username, group_name)
+    
+    # Initialize session state for selections if not exists
+    if "semi_selections" not in st.session_state:
+        st.session_state["semi_selections"] = set(user_picks)
+    
+    # Count current selections
+    selected_count = len(st.session_state["semi_selections"])
+    
+    # Show counter at top
+    st.markdown("### Selection Status")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if selected_count == 4:
+            st.success(f"**{selected_count}/4 teams selected**")
+        elif selected_count < 4:
+            st.info(f"**{selected_count}/4 teams selected**")
+        else:
+            st.error(f"**{selected_count}/4 teams selected** (too many!)")
+    
+    with col2:
+        remaining = 4 - selected_count
+        if remaining > 0:
+            st.metric("Still need", remaining)
+        elif remaining == 0:
+            st.metric("Ready!", "✓")
+        else:
+            st.metric("Over by", abs(remaining))
+    
+    with col3:
+        # Show validity status
+        all_members = get_member_slip_status(group_name)
+        member_status = next((m for m in all_members if m["username"] == username), None)
+        
+        # Check if user has any picks saved
+        current_saved_picks = get_user_semi_picks(username, group_name)
+        
+        if member_status and member_status.get("has_valid_semi_picks"):
+            st.success("✓ Valid & Saved")
+        elif current_saved_picks:
+            st.info(f"Draft: {len(current_saved_picks)} saved")
+        else:
+            st.warning("Not saved yet")
+    
+    st.divider()
+    
+    # Display teams by group with toggle buttons - 3 groups per row
+    all_groups = sorted(teams_by_group.keys())
+    
+    # Process groups in chunks of 3
+    for i in range(0, len(all_groups), 3):
+        group_chunk = all_groups[i:i+3]
+        cols = st.columns(len(group_chunk))
+        
+        for col_idx, group in enumerate(group_chunk):
+            with cols[col_idx]:
+                st.markdown(f"#### Group {group}")
+                teams = teams_by_group[group]
+                
+                # Display teams vertically in this column
+                for team in teams:
+                    is_selected = team in st.session_state["semi_selections"]
+                    
+                    # Toggle button - green for selected, gray for unselected
+                    button_type = "primary" if is_selected else "secondary"
+                    
+                    if st.button(
+                        team,
+                        key=f"semi_team_{group}_{team}",
+                        type=button_type,
+                        use_container_width=True
+                    ):
+                        # Toggle selection
+                        if is_selected:
+                            st.session_state["semi_selections"].discard(team)
+                        else:
+                            st.session_state["semi_selections"].add(team)
+                        st.rerun()
+        
+        st.divider()
+    
+    # Save button
+    st.markdown("### Save Your Picks")
+    
+    if selected_count < 4:
+        st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/4")
+    elif selected_count == 4:
+        st.success(f"✅ Perfect! You have selected exactly 4 teams. Save to complete your picks!")
+    else:
+        st.error(f"❌ Too many teams selected! You have {selected_count} but need exactly 4.")
+    
+    col_save, col_clear = st.columns([3, 1])
+    
+    with col_save:
+        if st.button("💾 Save Semi Finals Picks", type="primary", use_container_width=True):
+            # Save all selections (even if incomplete)
+            save_semi_picks(username, group_name, list(st.session_state["semi_selections"]))
+            
+            # Validate and update status (will only mark valid if exactly 4)
+            status = validate_and_set_semi_status(username, group_name)
+            
+            if status["is_valid"]:
+                st.success(f"✅ Saved {status['total_picks']} teams! Your Semi Finals picks are now VALID and locked in!")
+                st.rerun()
+            else:
+                st.warning(f"💾 Saved {status['total_picks']} teams as draft. Complete 4 teams to validate your picks.")
+                st.rerun()
+    
+    with col_clear:
+        if st.button("Clear All", use_container_width=True):
+            st.session_state["semi_selections"] = set()
+            st.rerun()
+
+
+# ── PAGE: FINAL ───────────────────────────────────────────────────────────────
+
+elif page == "Final":
+    st.title("Final")
+    st.caption("Select exactly 2 teams that you think will advance to the Final")
+    
+    # Custom CSS for green selected buttons
+    st.markdown("""
+        <style>
+        /* Make primary buttons green for this page */
+        div[data-testid="stVerticalBlock"] button[kind="primary"] {
+            background-color: #10b981 !important;
+            border-color: #10b981 !important;
+        }
+        div[data-testid="stVerticalBlock"] button[kind="primary"]:hover {
+            background-color: #059669 !important;
+            border-color: #059669 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    teams_by_group = get_all_teams()
+    
+    if not teams_by_group:
+        st.error("No teams found in database")
+        st.stop()
+    
+    # Get user's current selections
+    user_final_picks = get_user_final_picks(username, group_name)
+    
+    # Initialize session state for selections if not exists
+    if "final_selections" not in st.session_state:
+        # Get finalists from the dictionary
+        finalists = user_final_picks.get("finalists", [])
+        st.session_state["final_selections"] = set(finalists)
+    
+    # Count current selections
+    selected_count = len(st.session_state["final_selections"])
+    
+    # Show counter at top
+    st.markdown("### Selection Status")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if selected_count == 2:
+            st.success(f"**{selected_count}/2 teams selected**")
+        elif selected_count < 2:
+            st.info(f"**{selected_count}/2 teams selected**")
+        else:
+            st.error(f"**{selected_count}/2 teams selected** (too many!)")
+    
+    with col2:
+        remaining = 2 - selected_count
+        if remaining > 0:
+            st.metric("Still need", remaining)
+        elif remaining == 0:
+            st.metric("Ready!", "✓")
+        else:
+            st.metric("Over by", abs(remaining))
+    
+    with col3:
+        # Show validity status
+        all_members = get_member_slip_status(group_name)
+        member_status = next((m for m in all_members if m["username"] == username), None)
+        
+        current_saved_picks = get_user_final_picks(username, group_name)
+        finalists_saved = current_saved_picks.get("finalists", [])
+        
+        if member_status and member_status.get("has_valid_final_picks"):
+            st.success("✓ Valid & Saved")
+        elif finalists_saved:
+            st.info(f"Draft: {len(finalists_saved)} saved")
+        else:
+            st.warning("Not saved yet")
+    
+    st.divider()
+    
+    # Display teams by group with toggle buttons - 3 groups per row
+    all_groups = sorted(teams_by_group.keys())
+    
+    # Process groups in chunks of 3
+    for i in range(0, len(all_groups), 3):
+        group_chunk = all_groups[i:i+3]
+        cols = st.columns(len(group_chunk))
+        
+        for col_idx, group in enumerate(group_chunk):
+            with cols[col_idx]:
+                st.markdown(f"#### Group {group}")
+                teams = teams_by_group[group]
+                
+                # Display teams vertically in this column
+                for team in teams:
+                    is_selected = team in st.session_state["final_selections"]
+                    
+                    # Toggle button - green for selected, gray for unselected
+                    button_type = "primary" if is_selected else "secondary"
+                    
+                    if st.button(
+                        team,
+                        key=f"final_team_{group}_{team}",
+                        type=button_type,
+                        use_container_width=True
+                    ):
+                        # Toggle selection
+                        if is_selected:
+                            st.session_state["final_selections"].discard(team)
+                        else:
+                            st.session_state["final_selections"].add(team)
+                        st.rerun()
+        
+        st.divider()
+    
+    # Save button
+    st.markdown("### Save Your Picks")
+    
+    if selected_count < 2:
+        st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/2")
+    elif selected_count == 2:
+        st.success(f"✅ Perfect! You have selected exactly 2 teams. Save to complete your picks!")
+    else:
+        st.error(f"❌ Too many teams selected! You have {selected_count} but need exactly 2.")
+    
+    col_save, col_clear = st.columns([3, 1])
+    
+    with col_save:
+        if st.button("💾 Save Final Picks", type="primary", use_container_width=True):
+            # Save final picks (2 finalists, no winner)
+            finalists_list = list(st.session_state["final_selections"])
+            
+            # Need exactly 2 finalists to save
+            if len(finalists_list) >= 2:
+                save_final_picks(username, group_name, finalists_list[0], finalists_list[1], "")
+            elif len(finalists_list) == 1:
+                # Save with empty second finalist
+                save_final_picks(username, group_name, finalists_list[0], "", "")
+            else:
+                # Nothing to save
+                save_final_picks(username, group_name, "", "", "")
+            
+            # Validate
+            final_status = validate_and_set_final_status(username, group_name)
+            
+            if final_status["is_valid"]:
+                st.success(f"✅ Saved {final_status['total_finalists']} teams! Your Final picks are now VALID and locked in!")
+                st.rerun()
+            else:
+                st.warning(f"💾 Saved {final_status['total_finalists']} teams as draft. Complete 2 teams to validate your picks.")
+                st.rerun()
+    
+    with col_clear:
+        if st.button("Clear All", use_container_width=True):
+            st.session_state["final_selections"] = set()
+            st.rerun()
+
+
+# ── PAGE: WINNER & GOLDEN BOOT ────────────────────────────────────────────────
+
+elif page == "Winner & Golden Boot":
+    st.title("Winner & Golden Boot")
+    st.caption("Select the tournament winner and the golden boot winner (top scorer)")
+    st.divider()
+    
+    # Get current picks
+    current_winner = get_user_winner_pick(username, group_name)
+    current_golden_boot = get_user_golden_boot_pick(username, group_name)
+    
+    # Get all teams and players
+    teams_by_group = get_all_teams()
+    all_teams = []
+    for teams in teams_by_group.values():
+        all_teams.extend(teams)
+    all_teams = sorted(all_teams)
+    
+    goal_scorers = get_all_goal_scorers()
+    players_list = [f"{p['player_name']} ({p['team']})" for p in goal_scorers]
+    
+    # ── SECTION 1: Tournament Winner ──
+    st.markdown("## 🏆 Tournament Winner")
+    st.caption("Select which team will win the World Cup 2026")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Find current index
+        winner_index = 0
+        if current_winner and current_winner in all_teams:
+            winner_index = all_teams.index(current_winner)
+        
+        selected_winner = st.selectbox(
+            "Choose the tournament winner:",
+            options=all_teams,
+            index=winner_index if current_winner else 0,
+            key="winner_dropdown"
+        )
+    
+    with col2:
+        st.markdown("### Current Pick")
+        if current_winner:
+            st.success(f"✅ {current_winner}")
+        else:
+            st.warning("Not selected")
+    
+    # Save button for winner
+    if st.button("💾 Save Tournament Winner", type="primary", use_container_width=True):
+        save_winner_pick(username, group_name, selected_winner)
+        st.success(f"✅ Saved! Tournament winner: {selected_winner}")
+        st.rerun()
+    
+    st.divider()
+    
+    # ── SECTION 2: Golden Boot Winner ──
+    st.markdown("## ⚽ Golden Boot Winner")
+    st.caption("Select which player will score the most goals")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Find current index
+        boot_index = 0
+        if current_golden_boot:
+            # Find matching player in list
+            for i, player_str in enumerate(players_list):
+                if player_str.startswith(current_golden_boot):
+                    boot_index = i
+                    break
+        
+        selected_player_full = st.selectbox(
+            "Choose the golden boot winner:",
+            options=players_list,
+            index=boot_index if current_golden_boot else 0,
+            key="golden_boot_dropdown"
+        )
+        
+        # Extract player name (without team in parentheses)
+        selected_player = selected_player_full.split(" (")[0] if selected_player_full else ""
+    
+    with col2:
+        st.markdown("### Current Pick")
+        if current_golden_boot:
+            st.success(f"✅ {current_golden_boot}")
+        else:
+            st.warning("Not selected")
+    
+    # Save button for golden boot
+    if st.button("💾 Save Golden Boot Pick", type="primary", use_container_width=True):
+        save_golden_boot_pick(username, group_name, selected_player)
+        st.success(f"✅ Saved! Golden boot: {selected_player}")
+        st.rerun()
+    
+    st.divider()
+    
+    # Show validation status
+    st.markdown("### Completion Status")
+    col1, col2 = st.columns(2)
+    
+    winner_status = validate_and_set_winner_status(username, group_name)
+    boot_status = validate_and_set_golden_boot_status(username, group_name)
+    
+    with col1:
+        if winner_status["is_valid"]:
+            st.success("✅ Tournament Winner: Complete")
+        else:
+            st.warning("⚠️ Tournament Winner: Not selected")
+    
+    with col2:
+        if boot_status["is_valid"]:
+            st.success("✅ Golden Boot: Complete")
+        else:
+            st.warning("⚠️ Golden Boot: Not selected")
 
 
 # ── PAGE: LEADERBOARD ─────────────────────────────────────────────────────────
@@ -341,11 +1179,21 @@ elif page == "Leaderboard" and is_admin:
 
 elif page == "Leaderboard":
     st.title(f"🏆 Leaderboard — {group_name}")
-    st.caption("💡 Only players with valid betting slips (all matches bet with exact coin budget) appear on the leaderboard.")
+    st.caption("💡 Only players who have completed ALL picks appear on the leaderboard: Betting Slip + All Knockout Stages + Tournament Winner + Golden Boot")
 
     board = get_leaderboard(group_name)
     if not board:
-        st.info("No players with valid betting slips yet! Complete your slip to compete.")
+        st.info("No players with complete picks yet! To appear on the leaderboard, you need to complete:")
+        st.markdown("""
+        - ✅ Valid betting slip (10 coins budget)
+        - ✅ Round of 32 picks (32 teams)
+        - ✅ Round of 16 picks (16 teams)
+        - ✅ Quarter Finals picks (8 teams)
+        - ✅ Semi Finals picks (4 teams)
+        - ✅ Final picks (2 teams)
+        - ✅ Tournament Winner pick
+        - ✅ Golden Boot pick
+        """)
         st.stop()
 
     medals = ["🥇", "🥈", "🥉"]
@@ -358,7 +1206,10 @@ elif page == "Leaderboard":
         with col2:
             st.markdown(f"**{player['username']}**")
         with col3:
-            st.markdown(f"**{player['total_points']:.2f} pts**")
+            match_pts = player['total_points'] - player.get('knockout_points', 0)
+            knockout_pts = player.get('knockout_points', 0)
+            st.markdown(f"**{player['total_points']:.1f} pts**")
+            st.caption(f"Match: {match_pts:.1f} | Knockout: {knockout_pts:.1f}")
         with col4:
             st.caption(f"{player['correct_bets']}/{player['total_bets']} correct")
         if i <= 3:
@@ -370,7 +1221,7 @@ elif page == "Leaderboard":
 elif page == "Admin" and is_admin:
     st.title("🛠️ Admin Panel")
 
-    tab_groups, tab_odds, tab_results = st.tabs(["👥 Groups", "📊 Odds", "⚽ Results"])
+    tab_groups, tab_odds, tab_results, tab_knockout = st.tabs(["👥 Groups", "📊 Odds", "⚽ Match Results", "🏆 Knockout Results"])
 
     with tab_groups:
         st.subheader("Create a new group")
@@ -510,4 +1361,259 @@ elif page == "Admin" and is_admin:
                 st.rerun()
             else:
                 st.info("No changes detected.")
+    
+    with tab_knockout:
+        st.subheader("🏆 Set Knockout Stage Results")
+        st.caption("Mark which teams actually advanced in each knockout stage. This determines which users' predictions were correct.")
+        
+        knockout_stage = st.selectbox(
+            "Select knockout stage:",
+            ["Round of 32", "Round of 16", "Quarter Finals", "Semi Finals", "Tournament Winner", "Golden Boot"]
+        )
+        
+        st.divider()
+        
+        # Get all teams for selection
+        teams_by_group = get_all_teams()
+        all_teams = []
+        for teams in teams_by_group.values():
+            all_teams.extend(teams)
+        all_teams = sorted(all_teams)
+        
+        if knockout_stage == "Round of 32":
+            st.markdown("### Round of 32 - Select 32 teams that advanced")
+            st.caption("⚠️ Select exactly 32 teams. Users get **1 point** per correct team.")
+            
+            # Get current results
+            stage_key = "round32"
+            current_teams = get_knockout_results(stage_key) or []
+            
+            # Initialize session state
+            if f"admin_{stage_key}" not in st.session_state:
+                st.session_state[f"admin_{stage_key}"] = set(current_teams)
+            
+            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/32 teams")
+            
+            # Team selection in 4 columns
+            cols = st.columns(4)
+            for idx, team in enumerate(all_teams):
+                with cols[idx % 4]:
+                    is_selected = team in st.session_state[f"admin_{stage_key}"]
+                    if st.button(
+                        team,
+                        key=f"admin_{stage_key}_{team}",
+                        type="primary" if is_selected else "secondary",
+                        use_container_width=True
+                    ):
+                        if is_selected:
+                            st.session_state[f"admin_{stage_key}"].remove(team)
+                        else:
+                            st.session_state[f"admin_{stage_key}"].add(team)
+                        st.rerun()
+            
+            st.divider()
+            col_save, col_clear = st.columns([3, 1])
+            with col_save:
+                if st.button("� Save Round of 32 Results", type="primary", use_container_width=True):
+                    if len(st.session_state[f"admin_{stage_key}"]) == 32:
+                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                        get_knockout_results.clear()
+                        st.success("✅ Round of 32 results saved! Points will be calculated for all users.")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Select exactly 32 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+            with col_clear:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state[f"admin_{stage_key}"] = set()
+                    st.rerun()
+            
+        elif knockout_stage == "Round of 16":
+            st.markdown("### Round of 16 - Select 16 teams that advanced")
+            st.caption("⚠️ Select exactly 16 teams. Users get **2 points** per correct team.")
+            
+            stage_key = "round16"
+            current_teams = get_knockout_results(stage_key) or []
+            
+            if f"admin_{stage_key}" not in st.session_state:
+                st.session_state[f"admin_{stage_key}"] = set(current_teams)
+            
+            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/16 teams")
+            
+            cols = st.columns(4)
+            for idx, team in enumerate(all_teams):
+                with cols[idx % 4]:
+                    is_selected = team in st.session_state[f"admin_{stage_key}"]
+                    if st.button(
+                        team,
+                        key=f"admin_{stage_key}_{team}",
+                        type="primary" if is_selected else "secondary",
+                        use_container_width=True
+                    ):
+                        if is_selected:
+                            st.session_state[f"admin_{stage_key}"].remove(team)
+                        else:
+                            st.session_state[f"admin_{stage_key}"].add(team)
+                        st.rerun()
+            
+            st.divider()
+            col_save, col_clear = st.columns([3, 1])
+            with col_save:
+                if st.button("💾 Save Round of 16 Results", type="primary", use_container_width=True):
+                    if len(st.session_state[f"admin_{stage_key}"]) == 16:
+                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                        get_knockout_results.clear()
+                        st.success("✅ Round of 16 results saved! Points will be calculated for all users.")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Select exactly 16 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+            with col_clear:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state[f"admin_{stage_key}"] = set()
+                    st.rerun()
+            
+        elif knockout_stage == "Quarter Finals":
+            st.markdown("### Quarter Finals - Select 8 teams that advanced")
+            st.caption("⚠️ Select exactly 8 teams. Users get **4 points** per correct team.")
+            
+            stage_key = "quarter"
+            current_teams = get_knockout_results(stage_key) or []
+            
+            if f"admin_{stage_key}" not in st.session_state:
+                st.session_state[f"admin_{stage_key}"] = set(current_teams)
+            
+            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/8 teams")
+            
+            cols = st.columns(4)
+            for idx, team in enumerate(all_teams):
+                with cols[idx % 4]:
+                    is_selected = team in st.session_state[f"admin_{stage_key}"]
+                    if st.button(
+                        team,
+                        key=f"admin_{stage_key}_{team}",
+                        type="primary" if is_selected else "secondary",
+                        use_container_width=True
+                    ):
+                        if is_selected:
+                            st.session_state[f"admin_{stage_key}"].remove(team)
+                        else:
+                            st.session_state[f"admin_{stage_key}"].add(team)
+                        st.rerun()
+            
+            st.divider()
+            col_save, col_clear = st.columns([3, 1])
+            with col_save:
+                if st.button("� Save Quarter Finals Results", type="primary", use_container_width=True):
+                    if len(st.session_state[f"admin_{stage_key}"]) == 8:
+                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                        get_knockout_results.clear()
+                        st.success("✅ Quarter Finals results saved! Points will be calculated for all users.")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Select exactly 8 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+            with col_clear:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state[f"admin_{stage_key}"] = set()
+                    st.rerun()
+            
+        elif knockout_stage == "Semi Finals":
+            st.markdown("### Semi Finals - Select 4 teams that advanced")
+            st.caption("⚠️ Select exactly 4 teams. Users get **5 points** per correct team.")
+            
+            stage_key = "semi"
+            current_teams = get_knockout_results(stage_key) or []
+            
+            if f"admin_{stage_key}" not in st.session_state:
+                st.session_state[f"admin_{stage_key}"] = set(current_teams)
+            
+            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/4 teams")
+            
+            cols = st.columns(4)
+            for idx, team in enumerate(all_teams):
+                with cols[idx % 4]:
+                    is_selected = team in st.session_state[f"admin_{stage_key}"]
+                    if st.button(
+                        team,
+                        key=f"admin_{stage_key}_{team}",
+                        type="primary" if is_selected else "secondary",
+                        use_container_width=True
+                    ):
+                        if is_selected:
+                            st.session_state[f"admin_{stage_key}"].remove(team)
+                        else:
+                            st.session_state[f"admin_{stage_key}"].add(team)
+                        st.rerun()
+            
+            st.divider()
+            col_save, col_clear = st.columns([3, 1])
+            with col_save:
+                if st.button("💾 Save Semi Finals Results", type="primary", use_container_width=True):
+                    if len(st.session_state[f"admin_{stage_key}"]) == 4:
+                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                        get_knockout_results.clear()
+                        st.success("✅ Semi Finals results saved! Points will be calculated for all users.")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Select exactly 4 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+            with col_clear:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state[f"admin_{stage_key}"] = set()
+                    st.rerun()
+            
+        elif knockout_stage == "Tournament Winner":
+            st.markdown("### Tournament Winner")
+            st.caption("Select the team that won the World Cup 2026. Winner gets **10 points**.")
+            
+            stage_key = "winner"
+            current_winner = get_knockout_results(stage_key)
+            winner_team = current_winner[0] if current_winner else ""
+            
+            selected_winner = st.selectbox(
+                "Select tournament winner:", 
+                [""] + all_teams,
+                index=(all_teams.index(winner_team) + 1) if winner_team in all_teams else 0
+            )
+            
+            if st.button("💾 Save Tournament Winner", type="primary"):
+                if selected_winner:
+                    save_knockout_result(stage_key, [selected_winner])
+                    get_knockout_results.clear()
+                    st.success(f"✅ Tournament winner set to: {selected_winner}")
+                    st.rerun()
+                else:
+                    st.warning("Please select a team")
+                    
+        elif knockout_stage == "Golden Boot":
+            st.markdown("### Golden Boot Winner")
+            st.caption("Select the player who won the Golden Boot (top scorer). Winner gets **5 points**.")
+            
+            stage_key = "golden_boot"
+            current_boot = get_knockout_results(stage_key)
+            
+            goal_scorers = get_all_goal_scorers()
+            players_list = [""] + [f"{p['player_name']} ({p['team']})" for p in goal_scorers]
+            
+            # Find current index
+            boot_index = 0
+            if current_boot:
+                for i, player_str in enumerate(players_list):
+                    if player_str.startswith(current_boot):
+                        boot_index = i
+                        break
+            
+            golden_boot_player = st.selectbox(
+                "Select golden boot winner:", 
+                players_list,
+                index=boot_index
+            )
+            
+            if st.button("💾 Save Golden Boot Winner", type="primary"):
+                if golden_boot_player and golden_boot_player != "":
+                    player_name = golden_boot_player.split(" (")[0]
+                    save_knockout_result(stage_key, player_name=player_name)
+                    get_knockout_results.clear()
+                    st.success(f"✅ Golden Boot winner set to: {player_name}")
+                    st.rerun()
+                else:
+                    st.warning("Please select a player")
+
 

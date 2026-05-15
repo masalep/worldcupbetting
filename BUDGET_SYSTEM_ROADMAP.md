@@ -78,3 +78,5 @@ WHERE group_name = 'MyGroup'
 GROUP BY username
 ORDER BY total_winnings DESC
 ```
+
+Winner and Golden Boot bets. Also the leaderboard needs to be updated to validate against all bettings.
