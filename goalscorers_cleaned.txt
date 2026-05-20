@@ -1,0 +1,96 @@
+Kylian Mbappe	France
+Harry Kane	England
+Lionel Messi	Argentina
+Erling Haaland	Norway
+Lamine Yamal	Spain
+Cristiano Ronaldo	Portugal
+Ousmane Dembele	France
+Nick Woltemade	Germany
+Lautaro Martinez	Argentina
+Vinicius Junior	Brazil
+Romelu Lukaku	Belgium
+Raphinha	Brazil
+Mikel Oyarzabal	Spain
+Julian Alvarez	Argentina
+Alvaro Morata	Spain
+Richarlison	Brazil
+Joao Pedro	Brazil
+Cody Gakpo	Netherlands
+Bukayo Saka	England
+Memphis Depay	Netherlands
+Jean-Philippe Mateta	France
+Jude Bellingham	England
+Ferran Torres	Spain
+Cole Palmer	England
+Goncalo Ramos	Portugal
+Florian Wirtz	Germany
+Marcus Thuram	France
+Neymar	Brazil
+Enner Valencia	Ecuador
+Bruno Fernandes	Portugal
+Luis Diaz	Colombia
+Estevao Willian	Brazil
+Desire Doue	France
+Mohamed Salah	Egypt
+Mikel Merino	Spain
+Kai Havertz	Germany
+Dani Olmo	Spain
+Donyell Malen	Netherlands
+Morgan Rogers	England
+Santiago Gimenez	Mexico
+Darwin Nunez	Uruguay
+Eberechi Eze	England
+Lois Openda	Belgium
+Phil Foden	England
+Jamal Musiala	Germany
+Leandro Trossard	Belgium
+Marcus Rashford	England
+Borja Iglesias	Spain
+Matheus Cunha	Brazil
+Alexander Sorloth	Norway
+Folarin Balogun	USA
+Kevin De Bruyne	Belgium
+Christian Pulisic	USA
+Anthony Gordon	England
+Rafael Leao	Portugal
+Jeremy Doku	Belgium
+Sadio Mane	Senegal
+Leroy Sane	Germany
+Jhon Duran	Colombia
+Raul Jimenez	Mexico
+Omar Marmoush	Egypt
+Arda Guler	Turkey
+Mohammed Kudus	Ghana
+Nicolas Jackson	Senegal
+Jonathan David	Canada
+Kenan Yildiz	Turkey
+Pedro Neto	Portugal
+Haji Wright	USA
+Nico Williams	Spain
+Ricardo Pepi	USA
+Scott McTominay	Scotland
+Breel Embolo	Switzerland
+Ismaila Sarr	Senegal
+Hamza Igamane	Morocco
+Noa Lang	Netherlands
+Hirving Lozano	Mexico
+Kang-In Lee	South Korea
+Enzo Fernandez	Argentina
+Jorgen Strand Larsen	Norway
+Riyad Mahrez	Algeria
+James Rodriguez	Colombia
+Brahim Diaz	Morocco
+Andrej Kramaric	Croatia
+Jhon Arias	Colombia
+Pedri	Spain
+Che Adams	Scotland
+Chris Wood	New Zealand
+Oscar Bobb	Norway
+Cyle Larin	Canada
+Martin Odegaard	Norway
+Daizen Maeda	Japan
+Takumi Minamino	Japan
+Giovanni Reyna	USA
+Julio Enciso	Paraguay
+Achraf Hakimi	Morocco
+Brenden Aaronson	USA

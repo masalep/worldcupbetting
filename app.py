@@ -169,28 +169,28 @@ if page == "Place Bets":
     total_matches = len(matches)
     total_bets_placed = len(user_bets)
     total_coins_used = sum(bet.get("bet_amount", 1) for bet in user_bets.values())
-    remaining_coins = 10 - total_coins_used
+    remaining_coins = 90 - total_coins_used
     
     # Show budget tracker at top
     st.markdown("### 💰 Budget Tracker")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Coins Used", f"{total_coins_used}/10", 
+        st.metric("Coins Used", f"{total_coins_used}/90", 
                   delta=f"{remaining_coins} remaining" if remaining_coins > 0 else "Complete!")
     with col2:
         st.metric("Matches Bet", f"{total_bets_placed}/{total_matches}")
     with col3:
-        if total_bets_placed == total_matches and total_coins_used == 10:
+        if total_bets_placed == total_matches and total_coins_used == 90:
             st.success("✅ Valid Slip!")
         else:
             st.warning("⏳ Incomplete")
     
     # Show warning if over budget
-    if total_coins_used > 10:
-        st.error(f"🚨 **BUDGET EXCEEDED!** You've used {total_coins_used} coins but only have 10. You must reduce your bets to create a valid slip.")
+    if total_coins_used > 90:
+        st.error(f"🚨 **BUDGET EXCEEDED!** You've used {total_coins_used} coins but only have 90. You must reduce your bets to create a valid slip.")
     
     st.divider()
-    st.caption("Pick 1 (home win), X (draw) or 2 (away win) for each match. Set bet amount (1-10 coins). **Save all bets** when done.")
+    st.caption("Pick 1 (home win), X (draw) or 2 (away win) for each match. Set bet amount (1-2 coins). **Save all bets** when done.")
 
     match_groups: dict[str, list] = {}
     for m in matches:
@@ -203,22 +203,29 @@ if page == "Place Bets":
         key="selected_football_group",
     )
     
-    # Calculate LIVE preview of coins being used (from session state)
+    # Calculate LIVE preview
+    # Start with all saved bets from DB, then add/update with current edits on THIS page
     live_coins_preview = 0
-    for match in matches:
+    
+    # First: Add all saved bets from database
+    for mid, bet in user_bets.items():
+        live_coins_preview += bet.get("bet_amount", 1)
+    
+    # Second: Override with current edits on visible matches in this group
+    for match in match_groups[football_group]:
         mid = match["match_id"]
-        # Check if there's an amount in session state (user is editing)
-        if f"amount_{mid}" in st.session_state:
-            live_coins_preview += st.session_state[f"amount_{mid}"]
-        # Otherwise use saved amount
-        elif mid in user_bets:
-            live_coins_preview += user_bets[mid].get("bet_amount", 1)
+        saved_amount = user_bets.get(mid, {}).get("bet_amount", 0)  # 0 if not saved yet
+        current_amount = st.session_state.get(f"amount_{mid}")
+        
+        if current_amount is not None:
+            # User edited this match - replace saved amount with current
+            live_coins_preview = live_coins_preview - saved_amount + current_amount
     
     # Always show live preview
-    preview_remaining = 10 - live_coins_preview
-    if live_coins_preview > 10:
-        st.warning(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({live_coins_preview - 10} over budget)")
-    elif live_coins_preview < 10:
+    preview_remaining = 90 - live_coins_preview
+    if live_coins_preview > 90:
+        st.warning(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({live_coins_preview - 90} over budget)")
+    elif live_coins_preview < 90:
         st.info(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({preview_remaining} remaining)")
     else:
         st.success(f"💡 **Live Preview**: Perfect! **{live_coins_preview} coins** ✓")
@@ -285,10 +292,10 @@ if page == "Place Bets":
                     st.number_input(
                         "Coins",
                         min_value=1,
-                        max_value=10,
+                        max_value=2,
                         value=current_bet_amount,
                         key=f"amount_{mid}",
-                        help="Bet 1-10 coins on this match"
+                        help="Bet 1-2 coins on this match"
                     )
                 open_matches.append(mid)
 
@@ -311,6 +318,13 @@ if page == "Place Bets":
                         save_bet(username, group_name, mid, choice, bet_amount)
                         saved += 1
                 
+                # Clear session state for this group's matches to start fresh
+                for mid in open_matches:
+                    if f"bet_{mid}" in st.session_state:
+                        del st.session_state[f"bet_{mid}"]
+                    if f"amount_{mid}" in st.session_state:
+                        del st.session_state[f"amount_{mid}"]
+                
                 # Validate and update slip status
                 status = validate_and_set_slip_status(username, group_name)
                 
@@ -324,10 +338,10 @@ if page == "Place Bets":
                     issues = []
                     if status['total_bets'] < status['required_bets']:
                         issues.append(f"only {status['total_bets']}/{status['required_bets']} matches bet")
-                    if status['total_coins'] != 10:
-                        issues.append(f"only {status['total_coins']}/10 coins used")
-                    elif status['total_coins'] > 10:
-                        issues.append(f"{status['total_coins']}/10 coins used (over budget!)")
+                    if status['total_coins'] != 90:
+                        issues.append(f"only {status['total_coins']}/90 coins used")
+                    elif status['total_coins'] > 90:
+                        issues.append(f"{status['total_coins']}/90 coins used (over budget!)")
                     st.warning(f"⏳ Incomplete slip: {' · '.join(issues)}")
                 
                 st.rerun()
@@ -1185,7 +1199,7 @@ elif page == "Leaderboard":
     if not board:
         st.info("No players with complete picks yet! To appear on the leaderboard, you need to complete:")
         st.markdown("""
-        - ✅ Valid betting slip (10 coins budget)
+        - ✅ Valid betting slip (90 coins budget)
         - ✅ Round of 32 picks (32 teams)
         - ✅ Round of 16 picks (16 teams)
         - ✅ Quarter Finals picks (8 teams)

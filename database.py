@@ -197,9 +197,9 @@ def get_leaderboard(group_name: str) -> list:
 def validate_and_set_slip_status(username: str, group_name: str) -> dict:
     """
     Check if user has a valid betting slip:
-    - Bet on all matches (6 matches for testing)
-    - Total bet amount = 10 coins
-    - Each bet between 1-10 coins
+    - Bet on all matches (72 matches)
+    - Total bet amount = 90 coins
+    - Each bet between 1-2 coins
     Returns status dict with is_valid, messages, and stats.
     """
     sb = get_supabase()
@@ -214,8 +214,8 @@ def validate_and_set_slip_status(username: str, group_name: str) -> dict:
     total_bets = len(bets)
     total_coins = sum(bet.get("bet_amount", 1) for bet in bets)
     
-    # Validation (6 matches, 10 coins total for testing)
-    is_valid = (total_bets == total_matches and total_coins == 10)
+    # Validation (72 matches, 90 coins total)
+    is_valid = (total_bets == total_matches and total_coins == 90)
     
     # Update has_valid_slip in group_members
     sb.table("group_members").update({
@@ -227,7 +227,7 @@ def validate_and_set_slip_status(username: str, group_name: str) -> dict:
         "total_bets": total_bets,
         "required_bets": total_matches,
         "total_coins": total_coins,
-        "required_coins": 10,
+        "required_coins": 90,
     }
 
 

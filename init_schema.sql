@@ -61,7 +61,7 @@ CREATE TABLE bets (
     group_name TEXT NOT NULL,
     match_id TEXT NOT NULL REFERENCES matches(match_id),
     prediction TEXT CHECK (prediction IN ('1', 'X', '2')),
-    bet_amount INTEGER DEFAULT 1 CHECK (bet_amount >= 1 AND bet_amount <= 10),
+    bet_amount INTEGER DEFAULT 1 CHECK (bet_amount >= 1 AND bet_amount <= 2),
     points_earned FLOAT DEFAULT 0,
     UNIQUE (username, group_name, match_id)
 );
