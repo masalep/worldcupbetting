@@ -1,78 +1,79 @@
 -- init_teams.sql
 -- Inserts all 48 teams and their groups for 2026 World Cup
 -- Run in Supabase SQL Editor after creating tables
+-- Teams extracted from matches.json
 
 INSERT INTO teams (team_name, group_name) VALUES
 -- GROUP A
+('Czech Republic', 'A'),
 ('Mexico', 'A'),
 ('South Africa', 'A'),
 ('South Korea', 'A'),
-('Czech Republic', 'A'),
 
 -- GROUP B
+('Bosnia & Herzegovina', 'B'),
 ('Canada', 'B'),
-('Bosnia and Herzegovina', 'B'),
 ('Qatar', 'B'),
 ('Switzerland', 'B'),
 
 -- GROUP C
 ('Brazil', 'C'),
-('Morocco', 'C'),
 ('Haiti', 'C'),
+('Morocco', 'C'),
 ('Scotland', 'C'),
 
 -- GROUP D
-('USA', 'D'),
-('Paraguay', 'D'),
 ('Australia', 'D'),
+('Paraguay', 'D'),
 ('Turkey', 'D'),
+('USA', 'D'),
 
 -- GROUP E
-('Germany', 'E'),
 ('Curaçao', 'E'),
-('Ivory Coast', 'E'),
 ('Ecuador', 'E'),
+('Germany', 'E'),
+('Ivory Coast', 'E'),
 
 -- GROUP F
-('Netherlands', 'F'),
 ('Japan', 'F'),
+('Netherlands', 'F'),
 ('Sweden', 'F'),
 ('Tunisia', 'F'),
 
 -- GROUP G
-('Argentina', 'G'),
-('Colombia', 'G'),
-('Jamaica', 'G'),
-('Peru', 'G'),
+('Belgium', 'G'),
+('Egypt', 'G'),
+('Iran', 'G'),
+('New Zealand', 'G'),
 
 -- GROUP H
-('England', 'H'),
-('Wales', 'H'),
-('Belgium', 'H'),
+('Cape Verde', 'H'),
 ('Saudi Arabia', 'H'),
+('Spain', 'H'),
+('Uruguay', 'H'),
 
 -- GROUP I
-('Spain', 'I'),
-('Poland', 'I'),
-('Ukraine', 'I'),
-('Costa Rica', 'I'),
+('France', 'I'),
+('Iraq', 'I'),
+('Norway', 'I'),
+('Senegal', 'I'),
 
 -- GROUP J
-('France', 'J'),
-('Denmark', 'J'),
-('Senegal', 'J'),
-('Uruguay', 'J'),
+('Algeria', 'J'),
+('Argentina', 'J'),
+('Austria', 'J'),
+('Jordan', 'J'),
 
 -- GROUP K
+('Colombia', 'K'),
+('DR Congo', 'K'),
 ('Portugal', 'K'),
-('Croatia', 'K'),
-('Egypt', 'K'),
-('Serbia', 'K'),
+('Uzbekistan', 'K'),
 
 -- GROUP L
-('Italy', 'L'),
-('Norway', 'L'),
-('Algeria', 'L'),
-('Chile', 'L')
+('Croatia', 'L'),
+('England', 'L'),
+('Ghana', 'L'),
+('Panama', 'L')
 
 ON CONFLICT (team_name) DO NOTHING;
