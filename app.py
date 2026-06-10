@@ -169,25 +169,25 @@ if page == "Place Bets":
     total_matches = len(matches)
     total_bets_placed = len(user_bets)
     total_coins_used = sum(bet.get("bet_amount", 1) for bet in user_bets.values())
-    remaining_coins = 90 - total_coins_used
+    remaining_coins = 80 - total_coins_used
     
     # Show budget tracker at top
     st.markdown("### 💰 Budget Tracker")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Coins Used", f"{total_coins_used}/90", 
+        st.metric("Coins Used", f"{total_coins_used}/80", 
                   delta=f"{remaining_coins} remaining" if remaining_coins > 0 else "Complete!")
     with col2:
         st.metric("Matches Bet", f"{total_bets_placed}/{total_matches}")
     with col3:
-        if total_bets_placed == total_matches and total_coins_used == 90:
+        if total_bets_placed == total_matches and total_coins_used == 80:
             st.success("✅ Valid Slip!")
         else:
             st.warning("⏳ Incomplete")
     
     # Show warning if over budget
-    if total_coins_used > 90:
-        st.error(f"🚨 **BUDGET EXCEEDED!** You've used {total_coins_used} coins but only have 90. You must reduce your bets to create a valid slip.")
+    if total_coins_used > 80:
+        st.error(f"🚨 **BUDGET EXCEEDED!** You've used {total_coins_used} coins but only have 80. You must reduce your bets to create a valid slip.")
     
     st.divider()
     st.caption("Pick 1 (home win), X (draw) or 2 (away win) for each match. Set bet amount (1-2 coins). **Save all bets** when done.")
@@ -222,10 +222,10 @@ if page == "Place Bets":
             live_coins_preview = live_coins_preview - saved_amount + current_amount
     
     # Always show live preview
-    preview_remaining = 90 - live_coins_preview
-    if live_coins_preview > 90:
-        st.warning(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({live_coins_preview - 90} over budget)")
-    elif live_coins_preview < 90:
+    preview_remaining = 80 - live_coins_preview
+    if live_coins_preview > 80:
+        st.warning(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({live_coins_preview - 80} over budget)")
+    elif live_coins_preview < 80:
         st.info(f"💡 **Live Preview**: You're using **{live_coins_preview} coins** ({preview_remaining} remaining)")
     else:
         st.success(f"💡 **Live Preview**: Perfect! **{live_coins_preview} coins** ✓")
@@ -245,17 +245,13 @@ if page == "Place Bets":
         current_bet = bet_row.get("prediction")
 
         with st.container(border=True):
-            head_col, odds_col = st.columns([3, 2])
-            with head_col:
-                st.markdown(f"**{mid} · {home} vs {away}**")
-            with odds_col:
-                if home_odds:
-                    st.caption(f"1: {home_odds:.2f} · X: {draw_odds:.2f} · 2: {away_odds:.2f}")
-                else:
-                    st.caption("Odds not set yet")
+            # Match header — full width (odds are shown under the 1/X/2 options below)
+            st.markdown(f"**{mid} · {home} vs {away}**")
 
             if result:
                 result_text = {"1": "Home win", "X": "Draw", "2": "Away win"}.get(result, result)
+                if home_odds:
+                    st.caption(f"📊 Odds — 1: {home_odds:.2f} · X: {draw_odds:.2f} · 2: {away_odds:.2f}")
                 if current_bet:
                     pts = bet_row.get("points_earned") or 0
                     if current_bet == result:
@@ -266,6 +262,8 @@ if page == "Place Bets":
                     st.warning(f"No bet placed · Result: **{result}** ({result_text})")
 
             elif locked:
+                if home_odds:
+                    st.caption(f"📊 Odds — 1: {home_odds:.2f} · X: {draw_odds:.2f} · 2: {away_odds:.2f}")
                 if current_bet:
                     st.info(f"🔒 Locked bet: **{current_bet}**")
                 else:
@@ -288,6 +286,29 @@ if page == "Place Bets":
                         label_visibility="collapsed",
                         key=f"bet_{mid}",
                     )
+                    # Odds row — aligned in 3 columns directly under the 1 / X / 2 options
+                    if home_odds:
+                        oc1, oc2, oc3 = st.columns(3)
+                        with oc1:
+                            st.markdown(
+                                f"<div style='text-align:center; margin-top:-4px;'>"
+                                f"<strong>📊 {home_odds:.2f}</strong></div>",
+                                unsafe_allow_html=True,
+                            )
+                        with oc2:
+                            st.markdown(
+                                f"<div style='text-align:center; margin-top:-4px;'>"
+                                f"<strong>📊 {draw_odds:.2f}</strong></div>",
+                                unsafe_allow_html=True,
+                            )
+                        with oc3:
+                            st.markdown(
+                                f"<div style='text-align:center; margin-top:-4px;'>"
+                                f"<strong>📊 {away_odds:.2f}</strong></div>",
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.caption("⚠️ Odds not set yet")
                 with amount_col:
                     st.number_input(
                         "Coins",
@@ -338,10 +359,10 @@ if page == "Place Bets":
                     issues = []
                     if status['total_bets'] < status['required_bets']:
                         issues.append(f"only {status['total_bets']}/{status['required_bets']} matches bet")
-                    if status['total_coins'] != 90:
-                        issues.append(f"only {status['total_coins']}/90 coins used")
-                    elif status['total_coins'] > 90:
-                        issues.append(f"{status['total_coins']}/90 coins used (over budget!)")
+                    if status['total_coins'] != 80:
+                        issues.append(f"only {status['total_coins']}/80 coins used")
+                    elif status['total_coins'] > 80:
+                        issues.append(f"{status['total_coins']}/80 coins used (over budget!)")
                     st.warning(f"⏳ Incomplete slip: {' · '.join(issues)}")
                 
                 st.rerun()
@@ -381,6 +402,15 @@ elif page == "Round of 32":
     if "knockout_selections" not in st.session_state:
         st.session_state["knockout_selections"] = set(user_picks)
     
+    # Callback for toggling a team selection — fires BEFORE rerun,
+    # so the button renders with the new color in a single rerun (no double rerun).
+    def _toggle_knockout_team(team_name: str):
+        selections = st.session_state["knockout_selections"]
+        if team_name in selections:
+            selections.discard(team_name)
+        else:
+            selections.add(team_name)
+    
     # Count current selections
     selected_count = len(st.session_state["knockout_selections"])
     
@@ -409,13 +439,10 @@ elif page == "Round of 32":
         all_members = get_member_slip_status(group_name)
         member_status = next((m for m in all_members if m["username"] == username), None)
         
-        # Check if user has any picks saved
-        current_saved_picks = get_user_knockout_picks(username, group_name)
-        
         if member_status and member_status.get("has_valid_knockout_picks"):
             st.success("✓ Valid & Saved")
-        elif current_saved_picks:
-            st.info(f"Draft: {len(current_saved_picks)} saved")
+        elif user_picks:  # reuse already-fetched picks instead of a second DB call
+            st.info(f"Draft: {len(user_picks)} saved")
         else:
             st.warning("Not saved yet")
     
@@ -441,18 +468,15 @@ elif page == "Round of 32":
                     # Toggle button - green for selected, gray for unselected
                     button_type = "primary" if is_selected else "secondary"
                     
-                    if st.button(
+                    # on_click callback updates state BEFORE the rerun → only 1 rerun per click
+                    st.button(
                         team,
                         key=f"team_{group}_{team}",
                         type=button_type,
-                        use_container_width=True
-                    ):
-                        # Toggle selection
-                        if is_selected:
-                            st.session_state["knockout_selections"].discard(team)
-                        else:
-                            st.session_state["knockout_selections"].add(team)
-                        st.rerun()
+                        use_container_width=True,
+                        on_click=_toggle_knockout_team,
+                        args=(team,),
+                    )
         
         st.divider()
     
@@ -551,13 +575,10 @@ elif page == "Round of 16":
         all_members = get_member_slip_status(group_name)
         member_status = next((m for m in all_members if m["username"] == username), None)
         
-        # Check if user has any picks saved
-        current_saved_picks = get_user_round16_picks(username, group_name)
-        
         if member_status and member_status.get("has_valid_round16_picks"):
             st.success("✓ Valid & Saved")
-        elif current_saved_picks:
-            st.info(f"Draft: {len(current_saved_picks)} saved")
+        elif user_picks:  # reuse already-fetched picks instead of a second DB call
+            st.info(f"Draft: {len(user_picks)} saved")
         else:
             st.warning("Not saved yet")
     
@@ -583,18 +604,18 @@ elif page == "Round of 16":
                     # Toggle button - green for selected, gray for unselected
                     button_type = "primary" if is_selected else "secondary"
                     
-                    if st.button(
+                    # on_click callback updates state BEFORE rerun → only 1 rerun per click
+                    st.button(
                         team,
                         key=f"r16_team_{group}_{team}",
                         type=button_type,
-                        use_container_width=True
-                    ):
-                        # Toggle selection
-                        if is_selected:
-                            st.session_state["round16_selections"].discard(team)
-                        else:
-                            st.session_state["round16_selections"].add(team)
-                        st.rerun()
+                        use_container_width=True,
+                        on_click=lambda t=team: (
+                            st.session_state["round16_selections"].discard(t)
+                            if t in st.session_state["round16_selections"]
+                            else st.session_state["round16_selections"].add(t)
+                        ),
+                    )
         
         st.divider()
     
@@ -693,13 +714,10 @@ elif page == "Quarter Finals":
         all_members = get_member_slip_status(group_name)
         member_status = next((m for m in all_members if m["username"] == username), None)
         
-        # Check if user has any picks saved
-        current_saved_picks = get_user_quarter_picks(username, group_name)
-        
         if member_status and member_status.get("has_valid_quarter_picks"):
             st.success("✓ Valid & Saved")
-        elif current_saved_picks:
-            st.info(f"Draft: {len(current_saved_picks)} saved")
+        elif user_picks:  # reuse already-fetched picks instead of a second DB call
+            st.info(f"Draft: {len(user_picks)} saved")
         else:
             st.warning("Not saved yet")
     
@@ -725,18 +743,18 @@ elif page == "Quarter Finals":
                     # Toggle button - green for selected, gray for unselected
                     button_type = "primary" if is_selected else "secondary"
                     
-                    if st.button(
+                    # on_click callback updates state BEFORE rerun → only 1 rerun per click
+                    st.button(
                         team,
                         key=f"qf_team_{group}_{team}",
                         type=button_type,
-                        use_container_width=True
-                    ):
-                        # Toggle selection
-                        if is_selected:
-                            st.session_state["quarter_selections"].discard(team)
-                        else:
-                            st.session_state["quarter_selections"].add(team)
-                        st.rerun()
+                        use_container_width=True,
+                        on_click=lambda t=team: (
+                            st.session_state["quarter_selections"].discard(t)
+                            if t in st.session_state["quarter_selections"]
+                            else st.session_state["quarter_selections"].add(t)
+                        ),
+                    )
         
         st.divider()
     
@@ -835,13 +853,10 @@ elif page == "Semi Finals":
         all_members = get_member_slip_status(group_name)
         member_status = next((m for m in all_members if m["username"] == username), None)
         
-        # Check if user has any picks saved
-        current_saved_picks = get_user_semi_picks(username, group_name)
-        
         if member_status and member_status.get("has_valid_semi_picks"):
             st.success("✓ Valid & Saved")
-        elif current_saved_picks:
-            st.info(f"Draft: {len(current_saved_picks)} saved")
+        elif user_picks:  # reuse already-fetched picks instead of a second DB call
+            st.info(f"Draft: {len(user_picks)} saved")
         else:
             st.warning("Not saved yet")
     
@@ -867,18 +882,18 @@ elif page == "Semi Finals":
                     # Toggle button - green for selected, gray for unselected
                     button_type = "primary" if is_selected else "secondary"
                     
-                    if st.button(
+                    # on_click callback updates state BEFORE rerun → only 1 rerun per click
+                    st.button(
                         team,
                         key=f"semi_team_{group}_{team}",
                         type=button_type,
-                        use_container_width=True
-                    ):
-                        # Toggle selection
-                        if is_selected:
-                            st.session_state["semi_selections"].discard(team)
-                        else:
-                            st.session_state["semi_selections"].add(team)
-                        st.rerun()
+                        use_container_width=True,
+                        on_click=lambda t=team: (
+                            st.session_state["semi_selections"].discard(t)
+                            if t in st.session_state["semi_selections"]
+                            else st.session_state["semi_selections"].add(t)
+                        ),
+                    )
         
         st.divider()
     
@@ -1076,11 +1091,20 @@ elif page == "Winner & Golden Boot":
     st.caption("Select the tournament winner and the golden boot winner (top scorer)")
     st.divider()
     
-    # Get current picks
-    current_winner = get_user_winner_pick(username, group_name)
-    current_golden_boot = get_user_golden_boot_pick(username, group_name)
+    # Load picks from DB into session_state on first visit / user switch.
+    # After that, we treat session_state as the source of truth for the "Current Pick"
+    # display. On save, we update session_state immediately so the UI reflects the
+    # change without needing to wait for a DB roundtrip.
+    state_owner = f"{group_name}::{username}"  # detect if user switched accounts
+    if st.session_state.get("_picks_owner") != state_owner:
+        st.session_state["current_winner"] = get_user_winner_pick(username, group_name)
+        st.session_state["current_golden_boot"] = get_user_golden_boot_pick(username, group_name)
+        st.session_state["_picks_owner"] = state_owner
     
-    # Get all teams and players
+    current_winner = st.session_state["current_winner"]
+    current_golden_boot = st.session_state["current_golden_boot"]
+    
+    # Get all teams and players (both cached for 1h — basically free)
     teams_by_group = get_all_teams()
     all_teams = []
     for teams in teams_by_group.values():
@@ -1118,8 +1142,12 @@ elif page == "Winner & Golden Boot":
     
     # Save button for winner
     if st.button("💾 Save Tournament Winner", type="primary", use_container_width=True):
+        # Update session_state FIRST so the next rerun shows the new value instantly
+        st.session_state["current_winner"] = selected_winner
         save_winner_pick(username, group_name, selected_winner)
-        st.success(f"✅ Saved! Tournament winner: {selected_winner}")
+        st.toast(f"✅ Tournament winner saved: {selected_winner}", icon="✅")
+        # Force a rerun so the "Current Pick" badge re-renders with the new value
+        # (Streamlit only auto-reruns ONCE per click, with old state still in scope above)
         st.rerun()
     
     st.divider()
@@ -1159,27 +1187,28 @@ elif page == "Winner & Golden Boot":
     
     # Save button for golden boot
     if st.button("💾 Save Golden Boot Pick", type="primary", use_container_width=True):
+        # Update session_state FIRST so the next rerun shows the new value instantly
+        st.session_state["current_golden_boot"] = selected_player
         save_golden_boot_pick(username, group_name, selected_player)
-        st.success(f"✅ Saved! Golden boot: {selected_player}")
+        st.toast(f"✅ Golden boot saved: {selected_player}", icon="✅")
+        # Force a rerun so the "Current Pick" badge re-renders with the new value
+        # (Streamlit only auto-reruns ONCE per click, with old state still in scope above)
         st.rerun()
     
     st.divider()
     
-    # Show validation status
+    # Completion status — uses session_state, no DB calls
     st.markdown("### Completion Status")
     col1, col2 = st.columns(2)
     
-    winner_status = validate_and_set_winner_status(username, group_name)
-    boot_status = validate_and_set_golden_boot_status(username, group_name)
-    
     with col1:
-        if winner_status["is_valid"]:
+        if current_winner:
             st.success("✅ Tournament Winner: Complete")
         else:
             st.warning("⚠️ Tournament Winner: Not selected")
     
     with col2:
-        if boot_status["is_valid"]:
+        if current_golden_boot:
             st.success("✅ Golden Boot: Complete")
         else:
             st.warning("⚠️ Golden Boot: Not selected")
@@ -1199,7 +1228,7 @@ elif page == "Leaderboard":
     if not board:
         st.info("No players with complete picks yet! To appear on the leaderboard, you need to complete:")
         st.markdown("""
-        - ✅ Valid betting slip (90 coins budget)
+        - ✅ Valid betting slip (80 coins budget)
         - ✅ Round of 32 picks (32 teams)
         - ✅ Round of 16 picks (16 teams)
         - ✅ Quarter Finals picks (8 teams)
@@ -1395,8 +1424,8 @@ elif page == "Admin" and is_admin:
         all_teams = sorted(all_teams)
         
         if knockout_stage == "Round of 32":
-            st.markdown("### Round of 32 - Select 32 teams that advanced")
-            st.caption("⚠️ Select exactly 32 teams. Users get **1 point** per correct team.")
+            st.markdown("### Round of 32 - Select teams that advanced")
+            st.caption("⚠️ Eventually select 32 teams. You can save progressively as teams qualify. Users get **1 point** per correct team.")
             
             # Get current results
             stage_key = "round32"
@@ -1406,7 +1435,13 @@ elif page == "Admin" and is_admin:
             if f"admin_{stage_key}" not in st.session_state:
                 st.session_state[f"admin_{stage_key}"] = set(current_teams)
             
-            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/32 teams")
+            selected_count = len(st.session_state[f"admin_{stage_key}"])
+            if selected_count == 32:
+                st.success(f"✅ Selected: {selected_count}/32 teams — complete!")
+            elif selected_count > 32:
+                st.error(f"⚠️ Selected: {selected_count}/32 teams — too many!")
+            else:
+                st.info(f"📊 Selected: {selected_count}/32 teams (saving partial results is OK)")
             
             # Team selection in 4 columns
             cols = st.columns(4)
@@ -1428,22 +1463,23 @@ elif page == "Admin" and is_admin:
             st.divider()
             col_save, col_clear = st.columns([3, 1])
             with col_save:
-                if st.button("� Save Round of 32 Results", type="primary", use_container_width=True):
-                    if len(st.session_state[f"admin_{stage_key}"]) == 32:
-                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
-                        get_knockout_results.clear()
-                        st.success("✅ Round of 32 results saved! Points will be calculated for all users.")
-                        st.rerun()
+                save_label = "💾 Save Round of 32 Results" if selected_count == 32 else f"💾 Save partial results ({selected_count} teams)"
+                if st.button(save_label, type="primary", use_container_width=True, disabled=(selected_count > 32)):
+                    save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                    get_knockout_results.clear()
+                    if selected_count == 32:
+                        st.success("✅ Round of 32 complete! All points recalculated.")
                     else:
-                        st.error(f"❌ Select exactly 32 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+                        st.success(f"✅ Saved {selected_count} teams. Points recalculated — you can add more later.")
+                    st.rerun()
             with col_clear:
                 if st.button("Clear", use_container_width=True):
                     st.session_state[f"admin_{stage_key}"] = set()
                     st.rerun()
             
         elif knockout_stage == "Round of 16":
-            st.markdown("### Round of 16 - Select 16 teams that advanced")
-            st.caption("⚠️ Select exactly 16 teams. Users get **2 points** per correct team.")
+            st.markdown("### Round of 16 - Select teams that advanced")
+            st.caption("⚠️ Eventually select 16 teams. You can save progressively as teams qualify. Users get **2 points** per correct team.")
             
             stage_key = "round16"
             current_teams = get_knockout_results(stage_key) or []
@@ -1451,7 +1487,13 @@ elif page == "Admin" and is_admin:
             if f"admin_{stage_key}" not in st.session_state:
                 st.session_state[f"admin_{stage_key}"] = set(current_teams)
             
-            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/16 teams")
+            selected_count = len(st.session_state[f"admin_{stage_key}"])
+            if selected_count == 16:
+                st.success(f"✅ Selected: {selected_count}/16 teams — complete!")
+            elif selected_count > 16:
+                st.error(f"⚠️ Selected: {selected_count}/16 teams — too many!")
+            else:
+                st.info(f"📊 Selected: {selected_count}/16 teams (saving partial results is OK)")
             
             cols = st.columns(4)
             for idx, team in enumerate(all_teams):
@@ -1472,22 +1514,23 @@ elif page == "Admin" and is_admin:
             st.divider()
             col_save, col_clear = st.columns([3, 1])
             with col_save:
-                if st.button("💾 Save Round of 16 Results", type="primary", use_container_width=True):
-                    if len(st.session_state[f"admin_{stage_key}"]) == 16:
-                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
-                        get_knockout_results.clear()
-                        st.success("✅ Round of 16 results saved! Points will be calculated for all users.")
-                        st.rerun()
+                save_label = "💾 Save Round of 16 Results" if selected_count == 16 else f"💾 Save partial results ({selected_count} teams)"
+                if st.button(save_label, type="primary", use_container_width=True, disabled=(selected_count > 16)):
+                    save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                    get_knockout_results.clear()
+                    if selected_count == 16:
+                        st.success("✅ Round of 16 complete! All points recalculated.")
                     else:
-                        st.error(f"❌ Select exactly 16 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+                        st.success(f"✅ Saved {selected_count} teams. Points recalculated — you can add more later.")
+                    st.rerun()
             with col_clear:
                 if st.button("Clear", use_container_width=True):
                     st.session_state[f"admin_{stage_key}"] = set()
                     st.rerun()
             
         elif knockout_stage == "Quarter Finals":
-            st.markdown("### Quarter Finals - Select 8 teams that advanced")
-            st.caption("⚠️ Select exactly 8 teams. Users get **4 points** per correct team.")
+            st.markdown("### Quarter Finals - Select teams that advanced")
+            st.caption("⚠️ Eventually select 8 teams. You can save progressively as teams qualify. Users get **4 points** per correct team.")
             
             stage_key = "quarter"
             current_teams = get_knockout_results(stage_key) or []
@@ -1495,7 +1538,13 @@ elif page == "Admin" and is_admin:
             if f"admin_{stage_key}" not in st.session_state:
                 st.session_state[f"admin_{stage_key}"] = set(current_teams)
             
-            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/8 teams")
+            selected_count = len(st.session_state[f"admin_{stage_key}"])
+            if selected_count == 8:
+                st.success(f"✅ Selected: {selected_count}/8 teams — complete!")
+            elif selected_count > 8:
+                st.error(f"⚠️ Selected: {selected_count}/8 teams — too many!")
+            else:
+                st.info(f"📊 Selected: {selected_count}/8 teams (saving partial results is OK)")
             
             cols = st.columns(4)
             for idx, team in enumerate(all_teams):
@@ -1516,22 +1565,23 @@ elif page == "Admin" and is_admin:
             st.divider()
             col_save, col_clear = st.columns([3, 1])
             with col_save:
-                if st.button("� Save Quarter Finals Results", type="primary", use_container_width=True):
-                    if len(st.session_state[f"admin_{stage_key}"]) == 8:
-                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
-                        get_knockout_results.clear()
-                        st.success("✅ Quarter Finals results saved! Points will be calculated for all users.")
-                        st.rerun()
+                save_label = "💾 Save Quarter Finals Results" if selected_count == 8 else f"💾 Save partial results ({selected_count} teams)"
+                if st.button(save_label, type="primary", use_container_width=True, disabled=(selected_count > 8)):
+                    save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                    get_knockout_results.clear()
+                    if selected_count == 8:
+                        st.success("✅ Quarter Finals complete! All points recalculated.")
                     else:
-                        st.error(f"❌ Select exactly 8 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+                        st.success(f"✅ Saved {selected_count} teams. Points recalculated — you can add more later.")
+                    st.rerun()
             with col_clear:
                 if st.button("Clear", use_container_width=True):
                     st.session_state[f"admin_{stage_key}"] = set()
                     st.rerun()
             
         elif knockout_stage == "Semi Finals":
-            st.markdown("### Semi Finals - Select 4 teams that advanced")
-            st.caption("⚠️ Select exactly 4 teams. Users get **5 points** per correct team.")
+            st.markdown("### Semi Finals - Select teams that advanced")
+            st.caption("⚠️ Eventually select 4 teams. You can save progressively as teams qualify. Users get **5 points** per correct team.")
             
             stage_key = "semi"
             current_teams = get_knockout_results(stage_key) or []
@@ -1539,7 +1589,13 @@ elif page == "Admin" and is_admin:
             if f"admin_{stage_key}" not in st.session_state:
                 st.session_state[f"admin_{stage_key}"] = set(current_teams)
             
-            st.info(f"✅ Selected: {len(st.session_state[f'admin_{stage_key}'])}/4 teams")
+            selected_count = len(st.session_state[f"admin_{stage_key}"])
+            if selected_count == 4:
+                st.success(f"✅ Selected: {selected_count}/4 teams — complete!")
+            elif selected_count > 4:
+                st.error(f"⚠️ Selected: {selected_count}/4 teams — too many!")
+            else:
+                st.info(f"📊 Selected: {selected_count}/4 teams (saving partial results is OK)")
             
             cols = st.columns(4)
             for idx, team in enumerate(all_teams):
@@ -1560,14 +1616,15 @@ elif page == "Admin" and is_admin:
             st.divider()
             col_save, col_clear = st.columns([3, 1])
             with col_save:
-                if st.button("💾 Save Semi Finals Results", type="primary", use_container_width=True):
-                    if len(st.session_state[f"admin_{stage_key}"]) == 4:
-                        save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
-                        get_knockout_results.clear()
-                        st.success("✅ Semi Finals results saved! Points will be calculated for all users.")
-                        st.rerun()
+                save_label = "💾 Save Semi Finals Results" if selected_count == 4 else f"💾 Save partial results ({selected_count} teams)"
+                if st.button(save_label, type="primary", use_container_width=True, disabled=(selected_count > 4)):
+                    save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                    get_knockout_results.clear()
+                    if selected_count == 4:
+                        st.success("✅ Semi Finals complete! All points recalculated.")
                     else:
-                        st.error(f"❌ Select exactly 4 teams (currently {len(st.session_state[f'admin_{stage_key}'])})")
+                        st.success(f"✅ Saved {selected_count} teams. Points recalculated — you can add more later.")
+                    st.rerun()
             with col_clear:
                 if st.button("Clear", use_container_width=True):
                     st.session_state[f"admin_{stage_key}"] = set()

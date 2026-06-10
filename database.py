@@ -110,7 +110,13 @@ def set_result(match_id: str, result: str):
     odds_map = {"1": match["home_odds"], "X": match["draw_odds"], "2": match["away_odds"]}
 
     for bet in bets:
-        pts = odds_map.get(result, 0) if bet["prediction"] == result else 0
+        if bet["prediction"] == result:
+            odds = odds_map.get(result, 0) or 0
+            stake = bet.get("bet_amount", 1) or 1
+            # Points = odds × coins staked (e.g. 2 coins × 7.00 odds = 14 points)
+            pts = odds * stake
+        else:
+            pts = 0
         sb.table("bets").update({"points_earned": pts}).eq("id", bet["id"]).execute()
 
 
@@ -198,7 +204,7 @@ def validate_and_set_slip_status(username: str, group_name: str) -> dict:
     """
     Check if user has a valid betting slip:
     - Bet on all matches (72 matches)
-    - Total bet amount = 90 coins
+    - Total bet amount = 80 coins
     - Each bet between 1-2 coins
     Returns status dict with is_valid, messages, and stats.
     """
@@ -214,23 +220,27 @@ def validate_and_set_slip_status(username: str, group_name: str) -> dict:
     total_bets = len(bets)
     total_coins = sum(bet.get("bet_amount", 1) for bet in bets)
     
-    # Validation (72 matches, 90 coins total)
-    is_valid = (total_bets == total_matches and total_coins == 90)
+    # Validation (72 matches, 80 coins total)
+    is_valid = (total_bets == total_matches and total_coins == 80)
     
     # Update has_valid_slip in group_members
     sb.table("group_members").update({
         "has_valid_slip": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
     
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
+    
     return {
         "is_valid": is_valid,
         "total_bets": total_bets,
         "required_bets": total_matches,
         "total_coins": total_coins,
-        "required_coins": 90,
+        "required_coins": 80,
     }
 
 
+@st.cache_data(ttl=30)
 def get_member_slip_status(group_name: str) -> list:
     """Get all members and their slip status for a group."""
     sb = get_supabase()
@@ -241,6 +251,7 @@ def get_member_slip_status(group_name: str) -> list:
 
 # ── Knockout Picks ─────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)  # teams never change during the tournament — cache for 1 hour
 def get_all_teams() -> dict:
     """Return all teams organized by group. Returns {group: [team1, team2, ...]}"""
     sb = get_supabase()
@@ -303,6 +314,9 @@ def validate_and_set_knockout_status(username: str, group_name: str) -> dict:
         "has_valid_knockout_picks": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
     
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
+    
     return {
         "is_valid": is_valid,
         "total_picks": total_picks,
@@ -358,6 +372,9 @@ def validate_and_set_round16_status(username: str, group_name: str) -> dict:
     sb.table("group_members").update({
         "has_valid_round16_picks": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
+    
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
     
     return {
         "is_valid": is_valid,
@@ -415,6 +432,9 @@ def validate_and_set_quarter_status(username: str, group_name: str) -> dict:
         "has_valid_quarter_picks": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
     
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
+    
     return {
         "is_valid": is_valid,
         "total_picks": total_picks,
@@ -470,6 +490,9 @@ def validate_and_set_semi_status(username: str, group_name: str) -> dict:
     sb.table("group_members").update({
         "has_valid_semi_picks": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
+    
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
     
     return {
         "is_valid": is_valid,
@@ -537,6 +560,9 @@ def validate_and_set_final_status(username: str, group_name: str) -> dict:
         "has_valid_final_picks": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
     
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
+    
     return {
         "is_valid": is_valid,
         "total_finalists": total_finalists,
@@ -545,6 +571,7 @@ def validate_and_set_final_status(username: str, group_name: str) -> dict:
 
 # ── TOURNAMENT WINNER PICKS ────────────────────────────────────────────────────
 
+@st.cache_data(ttl=10)
 @st.cache_data(ttl=10)
 def get_user_winner_pick(username: str, group_name: str) -> str:
     """Get user's tournament winner pick."""
@@ -558,28 +585,29 @@ def get_user_winner_pick(username: str, group_name: str) -> str:
 
 
 def save_winner_pick(username: str, group_name: str, team: str):
-    """Save user's tournament winner pick."""
+    """Save user's tournament winner pick (single fast UPSERT + status update)."""
     sb = get_supabase()
     
     if not team:
         return
     
-    # Delete existing pick
-    sb.table("tournament_winner_picks")\
-      .delete()\
-      .eq("username", username)\
-      .eq("group_name", group_name)\
-      .execute()
-    
-    # Insert new pick
-    sb.table("tournament_winner_picks").insert({
+    # UPSERT — single round-trip instead of delete + insert (table has PK on username+group_name)
+    sb.table("tournament_winner_picks").upsert({
         "username": username,
         "group_name": group_name,
         "team": team
-    }).execute()
+    }, on_conflict="username,group_name").execute()
     
-    # Validate
-    validate_and_set_winner_status(username, group_name)
+    # Clear cache so any reader sees fresh data
+    get_user_winner_pick.clear()
+    
+    # Update validation flag DIRECTLY (no need to re-read — we know team is valid)
+    sb.table("group_members").update({
+        "has_valid_winner_pick": True
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    # Invalidate slip status cache (used by leaderboard / other pages)
+    get_member_slip_status.clear()
 
 
 def validate_and_set_winner_status(username: str, group_name: str) -> dict:
@@ -594,6 +622,9 @@ def validate_and_set_winner_status(username: str, group_name: str) -> dict:
         "has_valid_winner_pick": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
     
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
+    
     return {
         "is_valid": is_valid,
         "team": pick
@@ -602,7 +633,7 @@ def validate_and_set_winner_status(username: str, group_name: str) -> dict:
 
 # ── GOLDEN BOOT PICKS ──────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=3600)  # goal scorers list rarely changes — cache for 1 hour
 def get_all_goal_scorers() -> list:
     """Get all goal scorers for dropdown."""
     sb = get_supabase()
@@ -626,28 +657,29 @@ def get_user_golden_boot_pick(username: str, group_name: str) -> str:
 
 
 def save_golden_boot_pick(username: str, group_name: str, player_name: str):
-    """Save user's golden boot pick."""
+    """Save user's golden boot pick (single fast UPSERT + status update)."""
     sb = get_supabase()
     
     if not player_name:
         return
     
-    # Delete existing pick
-    sb.table("golden_boot_picks")\
-      .delete()\
-      .eq("username", username)\
-      .eq("group_name", group_name)\
-      .execute()
-    
-    # Insert new pick
-    sb.table("golden_boot_picks").insert({
+    # UPSERT — single round-trip instead of delete + insert (table has PK on username+group_name)
+    sb.table("golden_boot_picks").upsert({
         "username": username,
         "group_name": group_name,
         "player_name": player_name
-    }).execute()
+    }, on_conflict="username,group_name").execute()
     
-    # Validate
-    validate_and_set_golden_boot_status(username, group_name)
+    # Clear cache so any reader sees fresh data
+    get_user_golden_boot_pick.clear()
+    
+    # Update validation flag DIRECTLY (no need to re-read — we know pick is valid)
+    sb.table("group_members").update({
+        "has_valid_golden_boot_pick": True
+    }).eq("username", username).eq("group_name", group_name).execute()
+    
+    # Invalidate slip status cache (used by leaderboard / other pages)
+    get_member_slip_status.clear()
 
 
 def validate_and_set_golden_boot_status(username: str, group_name: str) -> dict:
@@ -661,6 +693,9 @@ def validate_and_set_golden_boot_status(username: str, group_name: str) -> dict:
     sb.table("group_members").update({
         "has_valid_golden_boot_pick": is_valid
     }).eq("username", username).eq("group_name", group_name).execute()
+    
+    # Invalidate cached slip status so UI shows fresh data after save
+    get_member_slip_status.clear()
     
     return {
         "is_valid": is_valid,

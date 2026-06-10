@@ -24,4 +24,4 @@ DELETE FROM golden_boot_picks;
 -- ✅ goal_scorers table (player list intact)
 -- ✅ knockout_results table (if you've entered any results)
 
--- After running this, all users can start fresh with their 90 kredit budget
+-- After running this, all users can start fresh with their 80 kredit budget
