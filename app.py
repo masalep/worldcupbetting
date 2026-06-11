@@ -3,6 +3,7 @@ import streamlit as st
 from database import (
     get_matches, get_user_bets,
     save_bet, get_leaderboard, set_result, lock_all_odds, unlock_all_odds,
+    get_group_bet_analytics, get_group_match_pick_distribution,
     get_groups, create_group, verify_group, join_group, verify_member,
     get_group_members, remove_group_member,
     validate_and_set_slip_status, get_member_slip_status,
@@ -18,6 +19,26 @@ from database import (
 
 
 st.set_page_config(page_title="⚽ WC 2026 Betting", page_icon="⚽", layout="wide")
+
+
+# ── HELPERS ────────────────────────────────────────────────────────────────────
+
+def is_betting_locked() -> bool:
+    """
+    True once the admin has clicked 🔒 Lock ALL Betting in the admin panel.
+    Used to freeze BOTH group-stage AND all knockout/winner/golden-boot edits
+    so nobody can change picks after the tournament has started.
+    """
+    matches = get_matches()
+    return any(m.get("betting_locked", False) for m in matches)
+
+
+def render_locked_banner():
+    """Standard red banner shown on every knockout page when betting is locked."""
+    st.error(
+        "🔒 **Picks are locked.** The tournament has started — your selections "
+        "below are read-only and cannot be changed anymore."
+    )
 
 
 # ── LOGIN ──────────────────────────────────────────────────────────────────────
@@ -41,7 +62,7 @@ if "username" not in st.session_state:
         groups      = get_groups()
         group_names = [g["name"] for g in groups]
 
-        login_mode = st.radio("", ["Join a group", "Admin login"], horizontal=True, label_visibility="collapsed")
+        login_mode = st.radio("Login type", ["Join a group", "Admin login"], horizontal=True, label_visibility="collapsed")
 
         if login_mode == "Admin login":
             admin_name = st.text_input("Admin username")
@@ -65,7 +86,7 @@ if "username" not in st.session_state:
 
             group      = st.selectbox("Select your group", group_names)
             grp_pass   = st.text_input("Group password", type="password")
-            mode       = st.radio("", ["Returning player", "New player"], horizontal=True, label_visibility="collapsed")
+            mode       = st.radio("Player mode", ["Returning player", "New player"], horizontal=True, label_visibility="collapsed")
             username   = st.text_input("Your name")
             user_pass  = st.text_input("Your personal password", type="password")
 
@@ -124,7 +145,7 @@ with st.sidebar:
     st.caption(f"Group: {group_name}")
     st.divider()
 
-    pages = ["Place Bets", "Leaderboard"]
+    pages = ["Place Bets", "Leaderboard", "Group Statistics"]
     if is_admin:
         pages.append("Admin")
     else:
@@ -136,7 +157,7 @@ with st.sidebar:
         pages.insert(5, "Final")
         pages.insert(6, "Winner & Golden Boot")
 
-    page = st.radio("", pages, label_visibility="collapsed")
+    page = st.radio("Page navigation", pages, label_visibility="collapsed")
     st.divider()
 
     if st.button("Logout", use_container_width=True):
@@ -374,6 +395,10 @@ elif page == "Round of 32":
     st.title("Round of 32")
     st.caption("Select exactly 32 teams that you think will advance to the Round of 32 (knockout stage)")
     
+    locked = is_betting_locked()
+    if locked:
+        render_locked_banner()
+    
     # Custom CSS for green selected buttons
     st.markdown("""
         <style>
@@ -474,16 +499,19 @@ elif page == "Round of 32":
                         key=f"team_{group}_{team}",
                         type=button_type,
                         use_container_width=True,
-                        on_click=_toggle_knockout_team,
+                        on_click=None if locked else _toggle_knockout_team,
                         args=(team,),
+                        disabled=locked,
                     )
         
         st.divider()
     
-    # Save button
+    # Save button — disabled when betting is locked
     st.markdown("### Save Your Picks")
     
-    if selected_count < 32:
+    if locked:
+        st.info(f"🔒 Your final picks: **{selected_count}/32 teams** selected.")
+    elif selected_count < 32:
         st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/32")
     elif selected_count == 32:
         st.success(f"✅ Perfect! You have selected exactly 32 teams. Save to complete your picks!")
@@ -493,7 +521,7 @@ elif page == "Round of 32":
     col_save, col_clear = st.columns([3, 1])
     
     with col_save:
-        if st.button("💾 Save Knockout Picks", type="primary", use_container_width=True):
+        if st.button("💾 Save Knockout Picks", type="primary", use_container_width=True, disabled=locked):
             # Save all selections (even if incomplete)
             save_knockout_picks(username, group_name, list(st.session_state["knockout_selections"]))
             
@@ -508,7 +536,7 @@ elif page == "Round of 32":
                 st.rerun()
     
     with col_clear:
-        if st.button("Clear All", use_container_width=True):
+        if st.button("Clear All", use_container_width=True, disabled=locked):
             st.session_state["knockout_selections"] = set()
             st.rerun()
 
@@ -518,6 +546,10 @@ elif page == "Round of 32":
 elif page == "Round of 16":
     st.title("Round of 16")
     st.caption("Select exactly 16 teams that you think will advance to the Round of 16 (knockout stage)")
+    
+    locked = is_betting_locked()
+    if locked:
+        render_locked_banner()
     
     # Custom CSS for green selected buttons
     st.markdown("""
@@ -610,19 +642,22 @@ elif page == "Round of 16":
                         key=f"r16_team_{group}_{team}",
                         type=button_type,
                         use_container_width=True,
-                        on_click=lambda t=team: (
+                        on_click=None if locked else (lambda t=team: (
                             st.session_state["round16_selections"].discard(t)
                             if t in st.session_state["round16_selections"]
                             else st.session_state["round16_selections"].add(t)
-                        ),
+                        )),
+                        disabled=locked,
                     )
         
         st.divider()
     
-    # Save button
+    # Save button — disabled when betting is locked
     st.markdown("### Save Your Picks")
     
-    if selected_count < 16:
+    if locked:
+        st.info(f"🔒 Your final picks: **{selected_count}/16 teams** selected.")
+    elif selected_count < 16:
         st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/16")
     elif selected_count == 16:
         st.success(f"✅ Perfect! You have selected exactly 16 teams. Save to complete your picks!")
@@ -632,7 +667,7 @@ elif page == "Round of 16":
     col_save, col_clear = st.columns([3, 1])
     
     with col_save:
-        if st.button("💾 Save Round of 16 Picks", type="primary", use_container_width=True):
+        if st.button("💾 Save Round of 16 Picks", type="primary", use_container_width=True, disabled=locked):
             # Save all selections (even if incomplete)
             save_round16_picks(username, group_name, list(st.session_state["round16_selections"]))
             
@@ -647,7 +682,7 @@ elif page == "Round of 16":
                 st.rerun()
     
     with col_clear:
-        if st.button("Clear All", use_container_width=True):
+        if st.button("Clear All", use_container_width=True, disabled=locked):
             st.session_state["round16_selections"] = set()
             st.rerun()
 
@@ -657,6 +692,10 @@ elif page == "Round of 16":
 elif page == "Quarter Finals":
     st.title("Quarter Finals")
     st.caption("Select exactly 8 teams that you think will advance to the Quarter Finals (knockout stage)")
+    
+    locked = is_betting_locked()
+    if locked:
+        render_locked_banner()
     
     # Custom CSS for green selected buttons
     st.markdown("""
@@ -749,19 +788,22 @@ elif page == "Quarter Finals":
                         key=f"qf_team_{group}_{team}",
                         type=button_type,
                         use_container_width=True,
-                        on_click=lambda t=team: (
+                        on_click=None if locked else (lambda t=team: (
                             st.session_state["quarter_selections"].discard(t)
                             if t in st.session_state["quarter_selections"]
                             else st.session_state["quarter_selections"].add(t)
-                        ),
+                        )),
+                        disabled=locked,
                     )
         
         st.divider()
     
-    # Save button
+    # Save button — disabled when betting is locked
     st.markdown("### Save Your Picks")
     
-    if selected_count < 8:
+    if locked:
+        st.info(f"🔒 Your final picks: **{selected_count}/8 teams** selected.")
+    elif selected_count < 8:
         st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/8")
     elif selected_count == 8:
         st.success(f"✅ Perfect! You have selected exactly 8 teams. Save to complete your picks!")
@@ -771,7 +813,7 @@ elif page == "Quarter Finals":
     col_save, col_clear = st.columns([3, 1])
     
     with col_save:
-        if st.button("💾 Save Quarter Finals Picks", type="primary", use_container_width=True):
+        if st.button("💾 Save Quarter Finals Picks", type="primary", use_container_width=True, disabled=locked):
             # Save all selections (even if incomplete)
             save_quarter_picks(username, group_name, list(st.session_state["quarter_selections"]))
             
@@ -786,7 +828,7 @@ elif page == "Quarter Finals":
                 st.rerun()
     
     with col_clear:
-        if st.button("Clear All", use_container_width=True):
+        if st.button("Clear All", use_container_width=True, disabled=locked):
             st.session_state["quarter_selections"] = set()
             st.rerun()
 
@@ -796,6 +838,10 @@ elif page == "Quarter Finals":
 elif page == "Semi Finals":
     st.title("Semi Finals")
     st.caption("Select exactly 4 teams that you think will advance to the Semi Finals")
+    
+    locked = is_betting_locked()
+    if locked:
+        render_locked_banner()
     
     # Custom CSS for green selected buttons
     st.markdown("""
@@ -888,19 +934,22 @@ elif page == "Semi Finals":
                         key=f"semi_team_{group}_{team}",
                         type=button_type,
                         use_container_width=True,
-                        on_click=lambda t=team: (
+                        on_click=None if locked else (lambda t=team: (
                             st.session_state["semi_selections"].discard(t)
                             if t in st.session_state["semi_selections"]
                             else st.session_state["semi_selections"].add(t)
-                        ),
+                        )),
+                        disabled=locked,
                     )
         
         st.divider()
     
-    # Save button
+    # Save button — disabled when betting is locked
     st.markdown("### Save Your Picks")
     
-    if selected_count < 4:
+    if locked:
+        st.info(f"🔒 Your final picks: **{selected_count}/4 teams** selected.")
+    elif selected_count < 4:
         st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/4")
     elif selected_count == 4:
         st.success(f"✅ Perfect! You have selected exactly 4 teams. Save to complete your picks!")
@@ -910,7 +959,7 @@ elif page == "Semi Finals":
     col_save, col_clear = st.columns([3, 1])
     
     with col_save:
-        if st.button("💾 Save Semi Finals Picks", type="primary", use_container_width=True):
+        if st.button("💾 Save Semi Finals Picks", type="primary", use_container_width=True, disabled=locked):
             # Save all selections (even if incomplete)
             save_semi_picks(username, group_name, list(st.session_state["semi_selections"]))
             
@@ -925,7 +974,7 @@ elif page == "Semi Finals":
                 st.rerun()
     
     with col_clear:
-        if st.button("Clear All", use_container_width=True):
+        if st.button("Clear All", use_container_width=True, disabled=locked):
             st.session_state["semi_selections"] = set()
             st.rerun()
 
@@ -935,6 +984,10 @@ elif page == "Semi Finals":
 elif page == "Final":
     st.title("Final")
     st.caption("Select exactly 2 teams that you think will advance to the Final")
+    
+    locked = is_betting_locked()
+    if locked:
+        render_locked_banner()
     
     # Custom CSS for green selected buttons
     st.markdown("""
@@ -1030,7 +1083,8 @@ elif page == "Final":
                         team,
                         key=f"final_team_{group}_{team}",
                         type=button_type,
-                        use_container_width=True
+                        use_container_width=True,
+                        disabled=locked,
                     ):
                         # Toggle selection
                         if is_selected:
@@ -1041,10 +1095,12 @@ elif page == "Final":
         
         st.divider()
     
-    # Save button
+    # Save button — disabled when betting is locked
     st.markdown("### Save Your Picks")
     
-    if selected_count < 2:
+    if locked:
+        st.info(f"🔒 Your final picks: **{selected_count}/2 teams** selected.")
+    elif selected_count < 2:
         st.info(f"💡 You can save incomplete picks and return later. Selected: {selected_count}/2")
     elif selected_count == 2:
         st.success(f"✅ Perfect! You have selected exactly 2 teams. Save to complete your picks!")
@@ -1054,7 +1110,7 @@ elif page == "Final":
     col_save, col_clear = st.columns([3, 1])
     
     with col_save:
-        if st.button("💾 Save Final Picks", type="primary", use_container_width=True):
+        if st.button("💾 Save Final Picks", type="primary", use_container_width=True, disabled=locked):
             # Save final picks (2 finalists, no winner)
             finalists_list = list(st.session_state["final_selections"])
             
@@ -1079,7 +1135,7 @@ elif page == "Final":
                 st.rerun()
     
     with col_clear:
-        if st.button("Clear All", use_container_width=True):
+        if st.button("Clear All", use_container_width=True, disabled=locked):
             st.session_state["final_selections"] = set()
             st.rerun()
 
@@ -1089,6 +1145,11 @@ elif page == "Final":
 elif page == "Winner & Golden Boot":
     st.title("Winner & Golden Boot")
     st.caption("Select the tournament winner and the golden boot winner (top scorer)")
+    
+    locked = is_betting_locked()
+    if locked:
+        render_locked_banner()
+    
     st.divider()
     
     # Load picks from DB into session_state on first visit / user switch.
@@ -1130,7 +1191,8 @@ elif page == "Winner & Golden Boot":
             "Choose the tournament winner:",
             options=all_teams,
             index=winner_index if current_winner else 0,
-            key="winner_dropdown"
+            key="winner_dropdown",
+            disabled=locked,
         )
     
     with col2:
@@ -1140,8 +1202,8 @@ elif page == "Winner & Golden Boot":
         else:
             st.warning("Not selected")
     
-    # Save button for winner
-    if st.button("💾 Save Tournament Winner", type="primary", use_container_width=True):
+    # Save button for winner — disabled when betting is locked
+    if st.button("💾 Save Tournament Winner", type="primary", use_container_width=True, disabled=locked):
         # Update session_state FIRST so the next rerun shows the new value instantly
         st.session_state["current_winner"] = selected_winner
         save_winner_pick(username, group_name, selected_winner)
@@ -1172,7 +1234,8 @@ elif page == "Winner & Golden Boot":
             "Choose the golden boot winner:",
             options=players_list,
             index=boot_index if current_golden_boot else 0,
-            key="golden_boot_dropdown"
+            key="golden_boot_dropdown",
+            disabled=locked,
         )
         
         # Extract player name (without team in parentheses)
@@ -1185,8 +1248,8 @@ elif page == "Winner & Golden Boot":
         else:
             st.warning("Not selected")
     
-    # Save button for golden boot
-    if st.button("💾 Save Golden Boot Pick", type="primary", use_container_width=True):
+    # Save button for golden boot — disabled when betting is locked
+    if st.button("💾 Save Golden Boot Pick", type="primary", use_container_width=True, disabled=locked):
         # Update session_state FIRST so the next rerun shows the new value instantly
         st.session_state["current_golden_boot"] = selected_player
         save_golden_boot_pick(username, group_name, selected_player)
@@ -1237,26 +1300,143 @@ elif page == "Leaderboard":
         - ✅ Tournament Winner pick
         - ✅ Golden Boot pick
         """)
-        st.stop()
+    else:
+        medals = ["🥇", "🥈", "🥉"]
 
-    medals = ["🥇", "🥈", "🥉"]
+        for i, player in enumerate(board, 1):
+            rank  = medals[i - 1] if i <= 3 else f"**{i}.**"
+            col1, col2, col3, col4 = st.columns([1, 4, 2, 2])
+            with col1:
+                st.markdown(rank)
+            with col2:
+                st.markdown(f"**{player['username']}**")
+            with col3:
+                match_pts = player['total_points'] - player.get('knockout_points', 0)
+                knockout_pts = player.get('knockout_points', 0)
+                st.markdown(f"**{player['total_points']:.1f} pts**")
+                st.caption(f"Match: {match_pts:.1f} | Knockout: {knockout_pts:.1f}")
+            with col4:
+                st.caption(f"{player['correct_bets']}/{player['total_bets']} correct")
+            if i <= 3:
+                st.divider()
 
-    for i, player in enumerate(board, 1):
-        rank  = medals[i - 1] if i <= 3 else f"**{i}.**"
-        col1, col2, col3, col4 = st.columns([1, 4, 2, 2])
-        with col1:
-            st.markdown(rank)
-        with col2:
-            st.markdown(f"**{player['username']}**")
-        with col3:
-            match_pts = player['total_points'] - player.get('knockout_points', 0)
-            knockout_pts = player.get('knockout_points', 0)
-            st.markdown(f"**{player['total_points']:.1f} pts**")
-            st.caption(f"Match: {match_pts:.1f} | Knockout: {knockout_pts:.1f}")
-        with col4:
-            st.caption(f"{player['correct_bets']}/{player['total_bets']} correct")
-        if i <= 3:
-            st.divider()
+
+# ── PAGE: GROUP STATISTICS ────────────────────────────────────────────────────
+
+elif page == "Group Statistics" and is_admin:
+    st.info("Admins cannot view group statistics. Log in as a regular user to see this page.")
+    st.stop()
+
+elif page == "Group Statistics":
+    st.title(f"📊 Group Statistics — {group_name}")
+    st.caption("Analytics across all players in your group.")
+
+    # ── Betting Analytics ─────────────────────────────────────────────────
+    st.subheader("Betting Slip Analytics")
+    st.caption(
+        "Per-user breakdown of the **group stage betting slip**. "
+        "Includes everyone in the group who has placed at least one bet "
+        "— even if their slip isn't fully valid yet."
+    )
+
+    analytics = get_group_bet_analytics(group_name)
+    if not analytics:
+        st.info("No bets placed in this group yet.")
+    else:
+        import pandas as pd
+        df = pd.DataFrame(analytics)
+        df.index = range(1, len(df) + 1)  # 1-based rank by max_payout
+        
+        # 🐔 Chicken award — bottom 3 by Odds Total get publicly shamed.
+        # Lowest odds total = pelkurit (stacking favourites): 3 chickens.
+        # 2nd lowest = 2 chickens. 3rd lowest = 1 chicken.
+        #
+        # 🚀🔥🎲 Gambler award — top 3 by Odds Total get glory emojis.
+        # Highest = 🚀 (to the moon). 2nd = 🔥 (on fire). 3rd = 🎲 (dice).
+        #
+        # Only applied if at least 3 players exist (otherwise meaningless).
+        if len(df) >= 3:
+            # Ascending rank: 1 = lowest odds (most cowardly)
+            chicken_ranking = df["odds_total"].rank(method="min", ascending=True)
+            chicken_emojis = chicken_ranking.map({1: " 🐔🐔🐔", 2: " 🐔🐔", 3: " 🐔"}).fillna("")
+            
+            # Descending rank: 1 = highest odds (biggest gambler)
+            gambler_ranking = df["odds_total"].rank(method="min", ascending=False)
+            gambler_emojis = gambler_ranking.map({1: " 🚀", 2: " 🔥", 3: " 🎲"}).fillna("")
+            
+            df["username"] = df["username"] + gambler_emojis + chicken_emojis
+        
+        df = df.rename(columns={
+            "username":    "Player",
+            "odds_total":  "Odds Total",
+            "max_payout":  "Max Payout",
+        })
+        st.dataframe(
+            df,
+            use_container_width=True,
+            column_config={
+                "Player":     st.column_config.TextColumn("Player", width="medium", help="� highest odds · 🔥 2nd · 🎲 3rd  |  🐔 lowest odds · 🐔🐔 2nd lowest · 🐔🐔🐔 lowest"),
+                "Odds Total": st.column_config.NumberColumn("Odds Total", format="%.2f", help="Sum of all odds the user backed (higher = riskier / more upsets predicted)"),
+                "Max Payout": st.column_config.NumberColumn("Max Payout", format="%.1f pts", help="Theoretical maximum points if every group stage bet wins (= sum of odds × coins)"),
+            },
+        )
+
+    # ── Match Pick Distribution ───────────────────────────────────────────
+    st.divider()
+    st.subheader("Match Pick Distribution")
+    st.caption(
+        "How your group is voting on each group-stage match. "
+        "Percentages are share of picks for **1** (home win), **X** (draw), or **2** (away win)."
+    )
+
+    distribution = get_group_match_pick_distribution(group_name)
+    if not distribution:
+        st.info("No bets placed in this group yet.")
+    else:
+        import pandas as pd
+        df_d = pd.DataFrame(distribution)
+
+        # Build a friendly match label
+        df_d["Match"] = df_d["home_team"] + "  vs  " + df_d["away_team"]
+
+        # Result column — plain "1" / "X" / "2", blank until admin sets it
+        df_d["Result"] = df_d["result"].fillna("")
+
+        # Keep only the columns we want to display, in display order
+        df_view = df_d[[
+            "matchday", "Match", "pct_1", "pct_X", "pct_2", "total_picks", "Result"
+        ]].rename(columns={
+            "matchday":    "MD",
+            "pct_1":       "1 (home)",
+            "pct_X":       "X (draw)",
+            "pct_2":       "2 (away)",
+            "total_picks": "Picks",
+        })
+        df_view.index = range(1, len(df_view) + 1)
+
+        st.dataframe(
+            df_view,
+            use_container_width=True,
+            height=min(35 * (len(df_view) + 1) + 3, 600),
+            column_config={
+                "MD":       st.column_config.NumberColumn("MD", format="%d", help="Matchday", width="small"),
+                "Match":    st.column_config.TextColumn("Match", width="medium"),
+                "1 (home)": st.column_config.ProgressColumn(
+                    "1 (home)", format="%.0f%%", min_value=0, max_value=100,
+                    help="% of group betting on home win",
+                ),
+                "X (draw)": st.column_config.ProgressColumn(
+                    "X (draw)", format="%.0f%%", min_value=0, max_value=100,
+                    help="% of group betting on draw",
+                ),
+                "2 (away)": st.column_config.ProgressColumn(
+                    "2 (away)", format="%.0f%%", min_value=0, max_value=100,
+                    help="% of group betting on away win",
+                ),
+                "Picks":    st.column_config.NumberColumn("Picks", format="%d", help="Total bets placed on this match", width="small"),
+                "Result":   st.column_config.TextColumn("Result", width="small", help="Actual result once set"),
+            },
+        )
 
 
 # ── PAGE: ADMIN ────────────────────────────────────────────────────────────────

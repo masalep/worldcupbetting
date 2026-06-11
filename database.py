@@ -9,6 +9,29 @@ def get_supabase():
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 
+def _fetch_all(build_query, page_size: int = 1000) -> list:
+    """
+    Fetch every row from a Supabase query, paginating past PostgREST's
+    1000-row default cap.
+
+    `build_query` MUST be a zero-arg callable that returns a fresh query
+    builder (e.g. lambda: sb.table("bets").select("*").eq("group_name", g))
+    — because supabase-py mutates the builder when .range() is applied, so
+    each page needs a new builder instance.
+    """
+    rows: list = []
+    offset = 0
+    while True:
+        chunk = build_query().range(offset, offset + page_size - 1).execute().data
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if len(chunk) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
 # ── Groups ─────────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=60)
@@ -100,13 +123,13 @@ def set_result(match_id: str, result: str):
 
     if result is None:
         # If result is cleared, also clear points for all bets
-        bets = sb.table("bets").select("*" ).eq("match_id", match_id).execute().data
+        bets = _fetch_all(lambda: sb.table("bets").select("*").eq("match_id", match_id))
         for bet in bets:
             sb.table("bets").update({"points_earned": 0}).eq("id", bet["id"]).execute()
         return
 
     match    = sb.table("matches").select("*" ).eq("match_id", match_id).execute().data[0]
-    bets     = sb.table("bets").select("*" ).eq("match_id", match_id).execute().data
+    bets     = _fetch_all(lambda: sb.table("bets").select("*").eq("match_id", match_id))
     odds_map = {"1": match["home_odds"], "X": match["draw_odds"], "2": match["away_odds"]}
 
     for bet in bets:
@@ -167,11 +190,10 @@ def get_leaderboard(group_name: str) -> list:
     if not usernames:
         return []
 
-    # Only bets placed within this group
-    bets = sb.table("bets").select("username, points_earned") \
-             .eq("group_name", group_name) \
-             .in_("username", usernames) \
-             .execute().data
+    # Only bets placed within this group (paginated — past 1000-row PostgREST cap)
+    bets = _fetch_all(lambda: sb.table("bets").select("username, points_earned")
+                                  .eq("group_name", group_name)
+                                  .in_("username", usernames))
 
     players = {}
     for bet in bets:
@@ -196,6 +218,128 @@ def get_leaderboard(group_name: str) -> list:
         players[u]["knockout_points"] = knockout_points["total_points"]  # Store separately for display
 
     return sorted(players.values(), key=lambda x: x["total_points"], reverse=True)
+
+
+@st.cache_data(ttl=30)
+def get_group_bet_analytics(group_name: str) -> list:
+    """
+    Read-only analytics for the group stage betting slip.
+    For every user in the group with at least one bet, returns:
+      - odds_total    : sum of odds matching each prediction (a "riskiness" indicator)
+      - max_payout    : sum of (odds * bet_amount) — theoretical max points if every bet wins
+    Sorted by max_payout descending.
+    """
+    sb = get_supabase()
+
+    # One paginated read — all bets in this group (past 1000-row PostgREST cap)
+    bets = _fetch_all(lambda: sb.table("bets")
+                                  .select("username, match_id, prediction, bet_amount")
+                                  .eq("group_name", group_name))
+
+    if not bets:
+        return []
+
+    # One query — all matches with their odds (single dict lookup)
+    matches = sb.table("matches") \
+        .select("match_id, home_odds, draw_odds, away_odds") \
+        .execute().data
+    odds_by_match = {
+        m["match_id"]: {
+            "1": m.get("home_odds") or 0,
+            "X": m.get("draw_odds") or 0,
+            "2": m.get("away_odds") or 0,
+        }
+        for m in matches
+    }
+
+    # Aggregate per user
+    players: dict = {}
+    for bet in bets:
+        user = bet["username"]
+        if user not in players:
+            players[user] = {
+                "username": user,
+                "odds_total": 0.0,
+                "max_payout": 0.0,
+            }
+
+        stake = bet.get("bet_amount", 1) or 1
+        pred = bet.get("prediction")
+        odds = odds_by_match.get(bet["match_id"], {}).get(pred, 0) or 0
+
+        players[user]["odds_total"] += odds
+        players[user]["max_payout"] += odds * stake
+
+    return sorted(players.values(), key=lambda x: x["max_payout"], reverse=True)
+
+
+@st.cache_data(ttl=30)
+def get_group_match_pick_distribution(group_name: str) -> list:
+    """
+    Read-only per-match pick distribution for the group.
+    For every group-stage match returns:
+      - match_id, matchday, kickoff, home_team, away_team
+      - count_1 / count_X / count_2 — number of picks for each outcome
+      - pct_1   / pct_X   / pct_2   — percentage of picks for each outcome (0-100)
+      - total_picks — total number of bets placed on this match
+      - result      — actual result if set ('1'/'X'/'2'), else None
+    Sorted chronologically by kickoff, then match_id.
+    """
+    sb = get_supabase()
+
+    # Paginated read — all bets in this group (handles >1000 rows)
+    bets = _fetch_all(lambda: sb.table("bets")
+                                  .select("match_id, prediction")
+                                  .eq("group_name", group_name))
+
+    # All matches (with result if available)
+    matches = sb.table("matches") \
+        .select("match_id, matchday, kickoff, home_team, away_team, result") \
+        .execute().data
+
+    # Count picks per (match_id, prediction)
+    counts: dict = {}
+    for bet in bets:
+        mid = bet["match_id"]
+        pred = bet.get("prediction")
+        if pred not in ("1", "X", "2"):
+            continue
+        if mid not in counts:
+            counts[mid] = {"1": 0, "X": 0, "2": 0}
+        counts[mid][pred] += 1
+
+    # Build output rows
+    rows = []
+    for m in matches:
+        mid = m["match_id"]
+        c = counts.get(mid, {"1": 0, "X": 0, "2": 0})
+        total = c["1"] + c["X"] + c["2"]
+        if total > 0:
+            pct_1 = 100.0 * c["1"] / total
+            pct_x = 100.0 * c["X"] / total
+            pct_2 = 100.0 * c["2"] / total
+        else:
+            pct_1 = pct_x = pct_2 = 0.0
+
+        rows.append({
+            "match_id": mid,
+            "matchday": m.get("matchday"),
+            "kickoff": m.get("kickoff"),
+            "home_team": m.get("home_team"),
+            "away_team": m.get("away_team"),
+            "result": m.get("result"),
+            "count_1": c["1"],
+            "count_X": c["X"],
+            "count_2": c["2"],
+            "total_picks": total,
+            "pct_1": pct_1,
+            "pct_X": pct_x,
+            "pct_2": pct_2,
+        })
+
+    # Sort chronologically — kickoff first (None goes last), then match_id
+    rows.sort(key=lambda r: (r["kickoff"] is None, r["kickoff"] or "", r["match_id"]))
+    return rows
 
 
 # ── Budget System ──────────────────────────────────────────────────────────────
