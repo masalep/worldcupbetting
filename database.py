@@ -342,58 +342,6 @@ def get_group_match_pick_distribution(group_name: str) -> list:
     return rows
 
 
-@st.cache_data(ttl=30)
-def get_group_knockout_pick_distribution(group_name: str) -> list:
-    """
-    Read-only per-team knockout pick distribution for the group.
-    For every team that has been picked by at least one player in this group,
-    returns absolute counts of how many players selected the team to reach each round:
-      - team       : team name
-      - r32        : # of players who put this team in their Round of 32
-      - r16        : # of players who advanced this team to Round of 16
-      - qf         : # of players who advanced this team to Quarter Finals
-      - sf         : # of players who advanced this team to Semi Finals
-      - final      : # of players who advanced this team to the Final
-      - winner     : # of players who picked this team to win the tournament
-    Sorted by winner desc, then final desc, then sf desc, etc. (most-backed teams on top).
-    """
-    sb = get_supabase()
-
-    # Each table holds (username, group_name, team) rows — one row per (player, team) pick.
-    # Counting rows per team = counting players who chose that team for that round.
-    r32_rows   = _fetch_all(lambda: sb.table("knockout_picks").select("team").eq("group_name", group_name))
-    r16_rows   = _fetch_all(lambda: sb.table("round16_picks").select("team").eq("group_name", group_name))
-    qf_rows    = _fetch_all(lambda: sb.table("quarter_picks").select("team").eq("group_name", group_name))
-    sf_rows    = _fetch_all(lambda: sb.table("semi_picks").select("team").eq("group_name", group_name))
-    final_rows = _fetch_all(lambda: sb.table("final_picks").select("team").eq("group_name", group_name))
-    win_rows   = _fetch_all(lambda: sb.table("tournament_winner_picks").select("team").eq("group_name", group_name))
-
-    # Aggregate counts per team per round
-    teams: dict = {}
-    def _bump(rows, key):
-        for r in rows:
-            t = r.get("team")
-            if not t:
-                continue
-            if t not in teams:
-                teams[t] = {"team": t, "r32": 0, "r16": 0, "qf": 0, "sf": 0, "final": 0, "winner": 0}
-            teams[t][key] += 1
-
-    _bump(r32_rows,   "r32")
-    _bump(r16_rows,   "r16")
-    _bump(qf_rows,    "qf")
-    _bump(sf_rows,    "sf")
-    _bump(final_rows, "final")
-    _bump(win_rows,   "winner")
-
-    # Sort: deepest predictions first (winner desc → final desc → sf desc → ... → r32 desc → team asc)
-    rows = sorted(
-        teams.values(),
-        key=lambda r: (-r["winner"], -r["final"], -r["sf"], -r["qf"], -r["r16"], -r["r32"], r["team"]),
-    )
-    return rows
-
-
 # ── Budget System ──────────────────────────────────────────────────────────────
 
 def validate_and_set_slip_status(username: str, group_name: str) -> dict:
