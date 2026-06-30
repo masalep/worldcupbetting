@@ -4,6 +4,7 @@ from database import (
     get_matches, get_user_bets,
     save_bet, get_leaderboard, set_result, lock_all_odds, unlock_all_odds,
     get_group_bet_analytics, get_group_match_pick_distribution,
+    get_group_knockout_pick_distribution,
     get_groups, create_group, verify_group, join_group, verify_member,
     get_group_members, remove_group_member,
     validate_and_set_slip_status, get_member_slip_status,
@@ -1435,6 +1436,47 @@ elif page == "Group Statistics":
                 ),
                 "Picks":    st.column_config.NumberColumn("Picks", format="%d", help="Total bets placed on this match", width="small"),
                 "Result":   st.column_config.TextColumn("Result", width="small", help="Actual result once set"),
+            },
+        )
+
+    # ── Knockout Pick Distribution ────────────────────────────────────────
+    st.divider()
+    st.subheader("Knockout Pick Distribution")
+    st.caption(
+        "Per-team funnel of how many players in your group picked each team to reach each round. "
+        "Numbers should fall from left to right as fewer players advance a team deeper into the bracket. "
+        "Teams nobody picked are omitted."
+    )
+
+    ko_dist = get_group_knockout_pick_distribution(group_name)
+    if not ko_dist:
+        st.info("No knockout picks placed in this group yet.")
+    else:
+        import pandas as pd
+        df_ko = pd.DataFrame(ko_dist)
+        df_ko = df_ko.rename(columns={
+            "team":   "Team",
+            "r32":    "R32",
+            "r16":    "R16",
+            "qf":     "QF",
+            "sf":     "SF",
+            "final":  "Final",
+            "winner": "Winner",
+        })
+        df_ko.index = range(1, len(df_ko) + 1)
+
+        st.dataframe(
+            df_ko,
+            use_container_width=True,
+            height=min(35 * (len(df_ko) + 1) + 3, 600),
+            column_config={
+                "Team":   st.column_config.TextColumn("Team", width="medium"),
+                "R32":    st.column_config.NumberColumn("R32",    format="%d", help="Players who put this team in Round of 32"),
+                "R16":    st.column_config.NumberColumn("R16",    format="%d", help="Players who advanced this team to Round of 16"),
+                "QF":     st.column_config.NumberColumn("QF",     format="%d", help="Players who advanced this team to Quarter Finals"),
+                "SF":     st.column_config.NumberColumn("SF",     format="%d", help="Players who advanced this team to Semi Finals"),
+                "Final":  st.column_config.NumberColumn("Final",  format="%d", help="Players who advanced this team to the Final"),
+                "Winner": st.column_config.NumberColumn("Winner", format="%d", help="Players who picked this team to win the tournament"),
             },
         )
 
