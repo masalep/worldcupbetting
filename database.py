@@ -944,6 +944,7 @@ def calculate_knockout_points(username: str, group_name: str) -> dict:
         "round16": {"points": 0, "correct": 0, "total": 16, "points_per": 2},
         "quarter": {"points": 0, "correct": 0, "total": 8, "points_per": 4},
         "semi": {"points": 0, "correct": 0, "total": 4, "points_per": 5},
+        "final": {"points": 0, "correct": 0, "total": 2, "points_per": 7},
         "winner": {"points": 0, "correct": 0, "total": 1, "points_per": 10},
         "golden_boot": {"points": 0, "correct": 0, "total": 1, "points_per": 5},
     }
@@ -979,6 +980,15 @@ def calculate_knockout_points(username: str, group_name: str) -> dict:
         correct = len(set(user_semi) & set(actual_semi))
         points_breakdown["semi"]["correct"] = correct
         points_breakdown["semi"]["points"] = correct * 5
+    
+    # Final (2 finalists) — 7 pts per correct finalist
+    actual_final = get_knockout_results("final")
+    if actual_final:
+        user_final = get_user_final_picks(username, group_name)
+        user_finalists = user_final.get("finalists", []) if isinstance(user_final, dict) else []
+        correct = len(set(user_finalists) & set(actual_final))
+        points_breakdown["final"]["correct"] = correct
+        points_breakdown["final"]["points"] = correct * 7
     
     # Tournament Winner
     actual_winner = get_knockout_results("winner")

@@ -1633,7 +1633,7 @@ elif page == "Admin" and is_admin:
         
         knockout_stage = st.selectbox(
             "Select knockout stage:",
-            ["Round of 32", "Round of 16", "Quarter Finals", "Semi Finals", "Tournament Winner", "Golden Boot"]
+            ["Round of 32", "Round of 16", "Quarter Finals", "Semi Finals", "Final", "Tournament Winner", "Golden Boot"]
         )
         
         st.divider()
@@ -1844,6 +1844,57 @@ elif page == "Admin" and is_admin:
                     get_knockout_results.clear()
                     if selected_count == 4:
                         st.success("✅ Semi Finals complete! All points recalculated.")
+                    else:
+                        st.success(f"✅ Saved {selected_count} teams. Points recalculated — you can add more later.")
+                    st.rerun()
+            with col_clear:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state[f"admin_{stage_key}"] = set()
+                    st.rerun()
+            
+        elif knockout_stage == "Final":
+            st.markdown("### Final - Select the 2 finalists")
+            st.caption("⚠️ Eventually select 2 teams (the finalists). You can save progressively. Users get **7 points** per correct finalist.")
+            
+            stage_key = "final"
+            current_teams = get_knockout_results(stage_key) or []
+            
+            if f"admin_{stage_key}" not in st.session_state:
+                st.session_state[f"admin_{stage_key}"] = set(current_teams)
+            
+            selected_count = len(st.session_state[f"admin_{stage_key}"])
+            if selected_count == 2:
+                st.success(f"✅ Selected: {selected_count}/2 teams — complete!")
+            elif selected_count > 2:
+                st.error(f"⚠️ Selected: {selected_count}/2 teams — too many!")
+            else:
+                st.info(f"📊 Selected: {selected_count}/2 teams (saving partial results is OK)")
+            
+            cols = st.columns(4)
+            for idx, team in enumerate(all_teams):
+                with cols[idx % 4]:
+                    is_selected = team in st.session_state[f"admin_{stage_key}"]
+                    if st.button(
+                        team,
+                        key=f"admin_{stage_key}_{team}",
+                        type="primary" if is_selected else "secondary",
+                        use_container_width=True
+                    ):
+                        if is_selected:
+                            st.session_state[f"admin_{stage_key}"].remove(team)
+                        else:
+                            st.session_state[f"admin_{stage_key}"].add(team)
+                        st.rerun()
+            
+            st.divider()
+            col_save, col_clear = st.columns([3, 1])
+            with col_save:
+                save_label = "💾 Save Final Results" if selected_count == 2 else f"💾 Save partial results ({selected_count} teams)"
+                if st.button(save_label, type="primary", use_container_width=True, disabled=(selected_count > 2)):
+                    save_knockout_result(stage_key, list(st.session_state[f"admin_{stage_key}"]))
+                    get_knockout_results.clear()
+                    if selected_count == 2:
+                        st.success("✅ Final complete! All points recalculated.")
                     else:
                         st.success(f"✅ Saved {selected_count} teams. Points recalculated — you can add more later.")
                     st.rerun()
